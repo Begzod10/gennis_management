@@ -1,0 +1,106 @@
+/* static/dark-purple-swagger.css */
+
+/* Base */
+.swagger-ui {
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important;
+    font-family: 'Inter', system-ui, sans-serif !important;
+}
+
+/* Topbar */
+.swagger-ui .topbar {
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    backdrop-filter: blur(10px) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Section headers */
+.swagger-ui .opblock-tag {
+    background: rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    color: #ffffff !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Operation blocks */
+.swagger-ui .opblock {
+    background: rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* GET */
+.swagger-ui .opblock.opblock-get .opblock-summary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+/* POST */
+.swagger-ui .opblock.opblock-post .opblock-summary {
+    background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%) !important;
+}
+
+/* PUT */
+.swagger-ui .opblock.opblock-put .opblock-summary {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%) !important;
+}
+
+/* DELETE */
+.swagger-ui .opblock.opblock-delete .opblock-summary {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%) !important;
+}
+
+/* PATCH */
+.swagger-ui .opblock.opblock-patch .opblock-summary {
+    background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%) !important;
+}
+
+/* Text colors */
+.swagger-ui .opblock-summary-description,
+.swagger-ui .opblock-summary-path,
+.swagger-ui .parameter__name,
+.swagger-ui .response-col_status,
+.swagger-ui .model,
+.swagger-ui .prop-type {
+    color: #ffffff !important;
+}
+
+/* Inputs */
+.swagger-ui input,
+.swagger-ui textarea,
+.swagger-ui select {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: #ffffff !important;
+    border-radius: 6px !important;
+}
+
+.swagger-ui input::placeholder {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Execute button */
+.swagger-ui .btn.execute {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border: none !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+}
+
+.swagger-ui .btn.execute:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6) !important;
+}
+
+/* Models */
+.swagger-ui section.models {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.swagger-ui .model-box {
+    background: rgba(0, 0, 0, 0.2) !important;
+    border-radius: 8px !important;
+}

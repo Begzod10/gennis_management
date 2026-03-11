@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Gennis Management API</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+    <link rel="stylesheet" href="/static/cyberpunk-swagger.css" id="theme-css">
+
+    <style>
+        .theme-switcher {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 9999;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .theme-switcher select {
+            padding: 5px 10px;
+            border-radius: 4px;
+            background: #1a1f3a;
+            color: #00ffff;
+            border: 1px solid #00ffff;
+            cursor: pointer;
+        }
+
+        /* Tag sections in a wrapping 3-column row */
+        .swagger-ui .opblock-tag-section {
+            display: inline-block !important;
+            width: calc(33.333% - 12px) !important;
+            vertical-align: top !important;
+            margin: 6px !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Wrapper around all route groups */
+        #swagger-ui .swagger-ui>div>div:nth-child(2) {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+            padding: 12px !important;
+        }
+
+        /* Each tag section fills one third of the row */
+        #swagger-ui .swagger-ui .opblock-tag-section {
+            flex: 0 0 calc(33.333% - 8px) !important;
+            min-width: 280px !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Full-width when expanded */
+        #swagger-ui .swagger-ui .opblock-tag-section.is-open {
+            flex: 0 0 100% !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="theme-switcher">
+        <select id="theme-select">
+            <option value="cyberpunk-swagger.css">Cyberpunk</option>
+            <option value="material-swagger.css">Material</option>
+            <option value="ocean-swagger.css">Ocean</option>
+            <option value="dark-purple-swagger.css">Dark Purple</option>
+        </select>
+    </div>
+
+    <div id="swagger-ui"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+
+    <script>
+        document.getElementById('theme-select').addEventListener('change', (e) => {
+            document.getElementById('theme-css').href = `/static/${e.target.value}`;
+            localStorage.setItem('swagger-theme', e.target.value);
+        });
+
+        const savedTheme = localStorage.getItem('swagger-theme');
+        if (savedTheme) {
+            document.getElementById('theme-css').href = `/static/${savedTheme}`;
+            document.getElementById('theme-select').value = savedTheme;
+        }
+
+        window.onload = function () {
+            window.ui = SwaggerUIBundle({
+                url: '/openapi.json',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                layout: "BaseLayout",
+                syntaxHighlight: { theme: "monokai" },
+                docExpansion: "none",
+                defaultModelsExpandDepth: -1,
+                filter: true,
+                displayRequestDuration: true
+            });
+        };
+    </script>
+</body>
+
+</html>

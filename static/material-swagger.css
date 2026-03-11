@@ -1,0 +1,155 @@
+/* static/material-swagger.css */
+
+/* Base theme */
+.swagger-ui {
+    font-family: 'Roboto', 'Segoe UI', sans-serif !important;
+    background-color: #fafafa !important;
+}
+
+/* Topbar */
+.swagger-ui .topbar {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border-bottom: none !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+.swagger-ui .topbar .download-url-wrapper {
+    display: none;
+}
+
+/* Section headers */
+.swagger-ui .opblock-tag {
+    background-color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+    margin: 20px 0 !important;
+    padding: 16px !important;
+    color: #424242 !important;
+    font-size: 20px !important;
+    font-weight: 500 !important;
+}
+
+.swagger-ui .opblock-tag:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+/* Operation blocks */
+.swagger-ui .opblock {
+    background-color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+    margin: 10px 0 !important;
+}
+
+/* GET - Blue */
+.swagger-ui .opblock.opblock-get {
+    border-left: 4px solid #2196F3 !important;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+    background-color: #2196F3 !important;
+}
+
+/* POST - Green */
+.swagger-ui .opblock.opblock-post {
+    border-left: 4px solid #4CAF50 !important;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+    background-color: #4CAF50 !important;
+}
+
+/* PUT - Orange */
+.swagger-ui .opblock.opblock-put {
+    border-left: 4px solid #FF9800 !important;
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary-method {
+    background-color: #FF9800 !important;
+}
+
+/* DELETE - Red */
+.swagger-ui .opblock.opblock-delete {
+    border-left: 4px solid #F44336 !important;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+    background-color: #F44336 !important;
+}
+
+/* PATCH - Purple */
+.swagger-ui .opblock.opblock-patch {
+    border-left: 4px solid #9C27B0 !important;
+}
+
+.swagger-ui .opblock.opblock-patch .opblock-summary-method {
+    background-color: #9C27B0 !important;
+}
+
+/* Buttons */
+.swagger-ui .btn {
+    border-radius: 4px !important;
+    font-weight: 500 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+.swagger-ui .btn.execute {
+    background-color: #667eea !important;
+    border: none !important;
+}
+
+.swagger-ui .btn.execute:hover {
+    background-color: #5568d3 !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+}
+
+/* Input fields */
+.swagger-ui input[type="text"],
+.swagger-ui input[type="email"],
+.swagger-ui input[type="password"],
+.swagger-ui textarea,
+.swagger-ui select {
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 4px !important;
+    padding: 10px !important;
+    transition: all 0.3s ease !important;
+}
+
+.swagger-ui input[type="text"]:focus,
+.swagger-ui textarea:focus,
+.swagger-ui select:focus {
+    border-color: #667eea !important;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1) !important;
+    outline: none !important;
+}
+
+/* Models */
+.swagger-ui section.models {
+    background-color: #ffffff !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+    padding: 20px !important;
+    margin-top: 20px !important;
+}
+
+.swagger-ui .model-box {
+    background-color: #fafafa !important;
+    border-radius: 4px !important;
+}
+
+/* Try it out button */
+.swagger-ui .try-out__btn {
+    background-color: transparent !important;
+    border: 2px solid #667eea !important;
+    color: #667eea !important;
+    font-weight: 500 !important;
+}
+
+.swagger-ui .try-out__btn:hover {
+    background-color: #667eea !important;
+    color: white !important;
+}

@@ -1,0 +1,71 @@
+/* static/ocean-swagger.css */
+
+/* Base */
+.swagger-ui {
+    background: linear-gradient(to bottom, #005c97, #363795) !important;
+    font-family: 'Segoe UI', Tahoma, sans-serif !important;
+}
+
+/* Topbar */
+.swagger-ui .topbar {
+    background-color: rgba(0, 92, 151, 0.8) !important;
+    backdrop-filter: blur(10px) !important;
+}
+
+/* Section headers */
+.swagger-ui .opblock-tag {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
+}
+
+/* Operation blocks */
+.swagger-ui .opblock {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 8px !important;
+}
+
+/* All methods with ocean colors */
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+    background-color: #00acc1 !important;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+    background-color: #26a69a !important;
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary-method {
+    background-color: #ffa726 !important;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+    background-color: #ef5350 !important;
+}
+
+.swagger-ui .opblock.opblock-patch .opblock-summary-method {
+    background-color: #ab47bc !important;
+}
+
+/* Text */
+.swagger-ui,
+.swagger-ui .parameter__name,
+.swagger-ui .response-col_status {
+    color: #ffffff !important;
+}
+
+/* Inputs */
+.swagger-ui input,
+.swagger-ui textarea,
+.swagger-ui select {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    color: #ffffff !important;
+}
+
+/* Execute button */
+.swagger-ui .btn.execute {
+    background-color: #00acc1 !important;
+    border: none !important;
+}
