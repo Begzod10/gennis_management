@@ -59,5 +59,21 @@ def seed_all_branches():
     seed_turon_branches()
 
 
+def seed_systems():
+    db = SessionLocal()
+    try:
+        for name in ["Gennis", "Turon"]:
+            exists = db.query(SystemModel).filter(SystemModel.name == name).first()
+            if not exists:
+                db.add(SystemModel(name=name, deleted=False))
+                print(f"Created SystemModel: {name}")
+            else:
+                print(f"SystemModel already exists: {name}")
+        db.commit()
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
+    seed_systems()
     seed_all_branches()
