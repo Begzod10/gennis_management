@@ -12,8 +12,31 @@ from sqlalchemy import func, extract, exists, and_, or_, case, select
 
 from ...database import get_turon_db
 from ...external_models import turon as T
+from typing import List
+from ...schemas_stats import (
+    BranchItem,
+    TuronSchoolStudentsOut, TuronTeacherSalariesOut,
+    TuronEmployerSalariesOut, TuronEncashmentOut,
+)
 
 router = APIRouter(prefix="/turon", tags=["Turon Detail"])
+
+
+# ── Branches ──────────────────────────────────────────────────────────────────
+
+@router.get("/branches", response_model=List[BranchItem])
+def turon_branches(db: Session = Depends(get_turon_db)):
+    """List Turon school branches, excluding Gazalkent and Test."""
+    rows = (
+        db.query(T.Branch)
+        .join(T.Location, T.Location.id == T.Branch.location_id)
+        .join(T.System, T.System.id == T.Location.system_id)
+        .filter(T.System.name == "school")
+        .filter(~T.Branch.name.in_(["Gazalkent"]))
+        .order_by(T.Branch.id)
+        .all()
+    )
+    return [{"id": r.id, "name": r.name} for r in rows]
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -55,7 +78,7 @@ def _salary_dates(db: Session, date_col, filter_clause) -> list:
 
 # ── School students ───────────────────────────────────────────────────────────
 
-@router.get("/school-students")
+@router.get("/school-students", response_model=TuronSchoolStudentsOut)
 def turon_school_students(
     branch: int = Query(...),
     month: int = Query(..., ge=1, le=12),
@@ -218,7 +241,7 @@ def turon_school_students(
 
 # ── Teacher salaries ──────────────────────────────────────────────────────────
 
-@router.get("/teacher-salaries")
+@router.get("/teacher-salaries", response_model=TuronTeacherSalariesOut)
 def turon_teacher_salaries(
     branch: int = Query(...),
     month: int = Query(..., ge=1, le=12),
@@ -239,7 +262,7 @@ def turon_teacher_salaries(
         .join(T.Teacher, T.Teacher.id == T.TeacherSalary.teacher_id)
         .join(T.CustomUser, T.CustomUser.id == T.Teacher.user_id)
         .filter(
-            T.TeacherSalary.branch_id == branch,
+            T.CustomUser.branch_id == branch,
             extract("month", T.TeacherSalary.month_date) == month,
             extract("year",  T.TeacherSalary.month_date) == year,
         )
@@ -297,17 +320,30 @@ def turon_teacher_salaries(
             "click":            p["click"],
         })
 
-    dates = _salary_dates(
-        db, T.TeacherSalary.month_date,
-        T.TeacherSalary.branch_id == branch,
+    date_rows = (
+        db.query(
+            extract("year",  T.TeacherSalary.month_date).label("year"),
+            extract("month", T.TeacherSalary.month_date).label("month"),
+        )
+        .join(T.Teacher, T.Teacher.id == T.TeacherSalary.teacher_id)
+        .join(T.CustomUser, T.CustomUser.id == T.Teacher.user_id)
+        .filter(T.CustomUser.branch_id == branch)
+        .distinct()
+        .order_by("year", "month")
+        .all()
     )
+    from collections import defaultdict as _dd
+    _ym: dict = _dd(list)
+    for r in date_rows:
+        _ym[int(r.year)].append(int(r.month))
+    dates = [{"year": y, "months": m} for y, m in _ym.items()]
 
     return {"salary": salary_list, "dates": dates, "branch": branch}
 
 
 # ── Employer (staff) salaries ─────────────────────────────────────────────────
 
-@router.get("/employer-salaries")
+@router.get("/employer-salaries", response_model=TuronEmployerSalariesOut)
 def turon_employer_salaries(
     branch: int = Query(...),
     month: int = Query(..., ge=1, le=12),
@@ -381,7 +417,7 @@ def turon_employer_salaries(
 
 # ── Encashment school (full report by payment type) ────────────────────────────
 
-@router.get("/encashment")
+@router.get("/encashment", response_model=TuronEncashmentOut)
 def turon_encashment(
     branch: int = Query(...),
     month: int = Query(..., ge=1, le=12),
@@ -415,8 +451,10 @@ def turon_encashment(
             func.coalesce(func.sum(T.TeacherSalary.remaining_salary), 0).label("remaining"),
             func.coalesce(func.sum(T.TeacherSalary.total_salary),     0).label("total"),
         )
+        .join(T.Teacher, T.Teacher.id == T.TeacherSalary.teacher_id)
+        .join(T.CustomUser, T.CustomUser.id == T.Teacher.user_id)
         .filter(
-            T.TeacherSalary.branch_id == branch,
+            T.CustomUser.branch_id == branch,
             extract("month", T.TeacherSalary.month_date) == month,
             extract("year",  T.TeacherSalary.month_date) == year,
         )
@@ -493,8 +531,8 @@ def turon_encashment(
         )
 
         # teachers
-        t_total    = db.query(func.coalesce(func.sum(T.TeacherSalary.total_salary),     0)).filter(T.TeacherSalary.branch_id == branch, extract("month", T.TeacherSalary.month_date) == month, extract("year", T.TeacherSalary.month_date) == year).scalar() or 0
-        t_remaining = db.query(func.coalesce(func.sum(T.TeacherSalary.remaining_salary), 0)).filter(T.TeacherSalary.branch_id == branch, extract("month", T.TeacherSalary.month_date) == month, extract("year", T.TeacherSalary.month_date) == year).scalar() or 0
+        t_total     = db.query(func.coalesce(func.sum(T.TeacherSalary.total_salary),     0)).join(T.Teacher, T.Teacher.id == T.TeacherSalary.teacher_id).join(T.CustomUser, T.CustomUser.id == T.Teacher.user_id).filter(T.CustomUser.branch_id == branch, extract("month", T.TeacherSalary.month_date) == month, extract("year", T.TeacherSalary.month_date) == year).scalar() or 0
+        t_remaining = db.query(func.coalesce(func.sum(T.TeacherSalary.remaining_salary), 0)).join(T.Teacher, T.Teacher.id == T.TeacherSalary.teacher_id).join(T.CustomUser, T.CustomUser.id == T.Teacher.user_id).filter(T.CustomUser.branch_id == branch, extract("month", T.TeacherSalary.month_date) == month, extract("year", T.TeacherSalary.month_date) == year).scalar() or 0
         t_taken    = (
             db.query(func.coalesce(func.sum(T.TeacherSalaryList.salary), 0))
             .join(T.PaymentTypes, T.PaymentTypes.id == T.TeacherSalaryList.payment_id)

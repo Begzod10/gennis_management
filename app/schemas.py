@@ -360,6 +360,76 @@ class MissionProofOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# --- Dividend ---
+class DividendCreate(BaseModel):
+    amount: int
+    source: str  # "gennis" or "turon"
+    date: date
+    description: Optional[str] = None
+    payment_type: Optional[str] = None
+    location_id: Optional[int] = None  # for source="gennis"
+    branch_id: Optional[int] = None    # for source="turon"
+
+
+class DividendUpdate(BaseModel):
+    amount: Optional[int] = None
+    date: Optional[date] = None
+    description: Optional[str] = None
+    payment_type: Optional[str] = None
+    location_id: Optional[int] = None
+    branch_id: Optional[int] = None
+
+
+class DividendOut(BaseModel):
+    id: int
+    amount: int
+    source: str
+    date: date
+    description: Optional[str]
+    payment_type: Optional[str]
+    location_id: Optional[int]
+    branch_id: Optional[int]
+    deleted: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# --- Investment ---
+class InvestmentCreate(BaseModel):
+    amount: int
+    source: str  # "gennis" or "turon"
+    date: date
+    description: Optional[str] = None
+    payment_type: Optional[str] = None
+    location_id: Optional[int] = None  # for source="gennis"
+    branch_id: Optional[int] = None    # for source="turon"
+
+
+class InvestmentUpdate(BaseModel):
+    amount: Optional[int] = None
+    date: Optional[date] = None
+    description: Optional[str] = None
+    payment_type: Optional[str] = None
+    location_id: Optional[int] = None
+    branch_id: Optional[int] = None
+
+
+class InvestmentOut(BaseModel):
+    id: int
+    amount: int
+    source: str
+    date: date
+    description: Optional[str]
+    payment_type: Optional[str]
+    location_id: Optional[int]
+    branch_id: Optional[int]
+    deleted: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 # --- Notification ---
 class NotificationOut(BaseModel):
     id: int

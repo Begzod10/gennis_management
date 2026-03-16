@@ -1,8 +1,11 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from .database import engine
+from .database import engine, gennis_write_engine, turon_write_engine
+from .external_models.gennis import GennisDividend, GennisInvestment
+from .external_models.turon import TuronDividend, TuronInvestment
 from .routers.v1 import (
     auth,
     jobs, users, salary_months, salary_days,
@@ -12,13 +15,26 @@ from .routers.v1 import (
     statistics,
     gennis_detail,
     turon_detail,
+    dividends,
+    investments,
 )
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create management_dividend table in Gennis and dividend table in Turon if not exist
+    GennisDividend.__table__.create(bind=gennis_write_engine, checkfirst=True)
+    TuronDividend.__table__.create(bind=turon_write_engine, checkfirst=True)
+    GennisInvestment.__table__.create(bind=gennis_write_engine, checkfirst=True)
+    TuronInvestment.__table__.create(bind=turon_write_engine, checkfirst=True)
+    yield
+
 
 app = FastAPI(
     title="Gennis Management API",
     version="1.0.0",
     docs_url=None,
     redoc_url=None,
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -50,6 +66,8 @@ app.include_router(notifications.router, prefix=V1)
 app.include_router(statistics.router, prefix=V1)
 app.include_router(gennis_detail.router, prefix=V1)
 app.include_router(turon_detail.router, prefix=V1)
+app.include_router(dividends.router, prefix=V1)
+app.include_router(investments.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)

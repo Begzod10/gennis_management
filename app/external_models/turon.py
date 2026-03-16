@@ -3,7 +3,7 @@ Read-only SQLAlchemy models mapped to the Turon school (Django) database.
 Django auto-generates table names as {app_label}_{model_name_lowercase}.
 Only columns needed for statistics are declared.
 """
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, ForeignKey, Table
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, ForeignKey, Table, Text
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -12,6 +12,20 @@ class TuronBase(DeclarativeBase):
 
 
 # ── Lookup / reference tables ─────────────────────────────────────────────────
+
+class Location(TuronBase):
+    __tablename__ = "location_location"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(String(255))
+    system_id = Column(BigInteger, ForeignKey("system_system.id"))
+
+
+class Branch(TuronBase):
+    __tablename__ = "branch_branch"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(String(255))
+    location_id = Column(BigInteger, ForeignKey("location_location.id"))
+
 
 class PaymentTypes(TuronBase):
     __tablename__ = "payments_paymenttypes"
@@ -135,6 +149,7 @@ class AttendancePerMonth(TuronBase):
     group_id = Column(BigInteger, ForeignKey("group_group.id"))
     month_date = Column(Date)
     total_debt = Column(Integer, default=0)
+    remaining_debt = Column(Integer, default=0)
     discount = Column(Integer, default=0)
     system_id = Column(BigInteger, ForeignKey("system_system.id"))
 
@@ -222,6 +237,34 @@ class BranchPayment(TuronBase):
     branch_id = Column(BigInteger, ForeignKey("branch_branch.id"))
     book_order_id = Column(BigInteger, ForeignKey("books_bookorder.id"))
     payment_type_id = Column(BigInteger, ForeignKey("payments_paymenttypes.id"))
+
+
+# ── Dividends ─────────────────────────────────────────────────────────────────
+
+class TuronDividend(TuronBase):
+    __tablename__ = "dividend"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    management_id = Column(BigInteger, nullable=False, unique=True)
+    amount = Column(Integer, nullable=False)
+    date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    payment_type = Column(String(255), nullable=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
+    deleted = Column(Boolean, default=False)
+
+
+# ── Investments ───────────────────────────────────────────────────────────────
+
+class TuronInvestment(TuronBase):
+    __tablename__ = "management_investment"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    management_id = Column(BigInteger, nullable=False, unique=True)
+    amount = Column(Integer, nullable=False)
+    date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    payment_type = Column(String(255), nullable=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
+    deleted = Column(Boolean, default=False)
 
 
 # ── Overheads ─────────────────────────────────────────────────────────────────

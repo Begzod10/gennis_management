@@ -258,6 +258,36 @@ class MissionProof(Base):
     mission = relationship("Mission", back_populates="proofs")
 
 
+class Dividend(Base):
+    __tablename__ = "dividend"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    amount = Column(BigInteger, nullable=False)
+    source = Column(String(50), nullable=False)  # "gennis" or "turon"
+    date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    payment_type = Column(String(255), nullable=True)
+    location_id = Column(Integer, nullable=True)   # Gennis: links to Gennis locations
+    branch_id = Column(BigInteger, nullable=True)  # Turon: links to Turon branches
+    deleted = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Investment(Base):
+    __tablename__ = "investment"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    amount = Column(BigInteger, nullable=False)
+    source = Column(String(50), nullable=False)  # "gennis" or "turon"
+    date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    payment_type = Column(String(255), nullable=True)
+    location_id = Column(Integer, nullable=True)   # Gennis: links to Gennis locations
+    branch_id = Column(BigInteger, nullable=True)  # Turon: links to Turon branches
+    deleted = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class Notification(Base):
     __tablename__ = "notification"
 

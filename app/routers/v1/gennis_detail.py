@@ -11,8 +11,24 @@ from sqlalchemy import and_, or_
 
 from ...database import get_gennis_db
 from ...external_models import gennis as G
+from typing import List, Union
+from ...schemas_stats import (
+    BranchItem,
+    GennisDebtorsOut,
+    GennisTeacherSalariesOut, GennisAssistentSalariesOut, GennisStaffSalariesOut,
+    GennisOverheadDetailOut,
+)
 
 router = APIRouter(prefix="/gennis", tags=["Gennis Detail"])
+
+
+# ── Branches ──────────────────────────────────────────────────────────────────
+
+@router.get("/branches", response_model=List[BranchItem])
+def gennis_branches(db: Session = Depends(get_gennis_db)):
+    """List all Gennis locations (branches)."""
+    rows = db.query(G.Locations).order_by(G.Locations.id).all()
+    return [{"id": r.id, "name": r.name} for r in rows]
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -42,7 +58,7 @@ def _resolve_month_year(db: Session, month: int, year: int):
 
 # ── Debtors ───────────────────────────────────────────────────────────────────
 
-@router.get("/debtors")
+@router.get("/debtors", response_model=GennisDebtorsOut)
 def gennis_debtors(
     location_id: int = Query(...),
     month: int = Query(..., ge=1, le=12),
@@ -146,7 +162,7 @@ def gennis_debtors(
 
 # ── Salaries ──────────────────────────────────────────────────────────────────
 
-@router.get("/salaries")
+@router.get("/salaries", response_model=Union[GennisTeacherSalariesOut, GennisAssistentSalariesOut, GennisStaffSalariesOut])
 def gennis_salaries(
     location_id: int = Query(...),
     month: int = Query(..., ge=1, le=12),
@@ -389,7 +405,7 @@ def gennis_salaries(
 
 # ── Overhead ──────────────────────────────────────────────────────────────────
 
-@router.get("/overhead")
+@router.get("/overhead", response_model=GennisOverheadDetailOut)
 def gennis_overhead(
     location_id: int = Query(...),
     month: int = Query(..., ge=1, le=12),

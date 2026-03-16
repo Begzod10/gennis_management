@@ -2,7 +2,7 @@
 Read-only SQLAlchemy models mapped to the Gennis education center database.
 Only columns needed for statistics are declared.
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, ForeignKey, Text
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -32,6 +32,12 @@ class CalendarDay(GennisBase):
 
 
 # ── Lookup ────────────────────────────────────────────────────────────────────
+
+class Locations(GennisBase):
+    __tablename__ = "locations"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+
 
 class PaymentTypes(GennisBase):
     __tablename__ = "paymenttypes"
@@ -232,6 +238,34 @@ class StaffSalaries(GennisBase):
     location_id = Column(Integer, ForeignKey("locations.id"))
     calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
+
+
+# ── Dividends ─────────────────────────────────────────────────────────────────
+
+class GennisDividend(GennisBase):
+    __tablename__ = "management_dividend"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    management_id = Column(Integer, nullable=False, unique=True)
+    amount = Column(Integer, nullable=False)
+    date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    payment_type = Column(String(255), nullable=True)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    deleted = Column(Boolean, default=False)
+
+
+# ── Investments ───────────────────────────────────────────────────────────────
+
+class GennisInvestment(GennisBase):
+    __tablename__ = "management_investment"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    management_id = Column(Integer, nullable=False, unique=True)
+    amount = Column(Integer, nullable=False)
+    date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    payment_type = Column(String(255), nullable=True)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    deleted = Column(Boolean, default=False)
 
 
 # ── Overheads ─────────────────────────────────────────────────────────────────
