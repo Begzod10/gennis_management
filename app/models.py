@@ -14,7 +14,7 @@ class Job(Base):
     deleted = Column(Boolean, nullable=False, default=False)
 
     users = relationship("User", back_populates="job")
-
+    test = Column(String(255), nullable=False)
 
 class User(Base):
     __tablename__ = "user"
