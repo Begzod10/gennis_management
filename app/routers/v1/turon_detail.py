@@ -32,7 +32,7 @@ def turon_branches(db: Session = Depends(get_turon_db)):
         .join(T.Location, T.Location.id == T.Branch.location_id)
         .join(T.System, T.System.id == T.Location.system_id)
         .filter(T.System.name == "school")
-        .filter(~T.Branch.name.in_(["Gazalkent"]))
+        .filter(~T.Branch.name.in_(["Gazalkent", "Test"]))
         .order_by(T.Branch.id)
         .all()
     )
