@@ -11,6 +11,31 @@ class TuronBase(DeclarativeBase):
     pass
 
 
+# ── Django auth tables ────────────────────────────────────────────────────────
+
+class AuthGroup(TuronBase):
+    __tablename__ = "auth_group"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(150))
+
+
+# M2M: CustomUser.groups -> user_customuser_groups
+customuser_groups = Table(
+    "user_customuser_groups",
+    TuronBase.metadata,
+    Column("customuser_id", BigInteger, ForeignKey("user_customuser.id")),
+    Column("group_id", Integer, ForeignKey("auth_group.id")),
+)
+
+
+class ManyBranch(TuronBase):
+    """permissions app → permissions_manybranch: user ↔ branch access mapping."""
+    __tablename__ = "permissions_manybranch"
+    id = Column(BigInteger, primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("user_customuser.id"))
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"))
+
+
 # ── Lookup / reference tables ─────────────────────────────────────────────────
 
 class Location(TuronBase):
@@ -74,6 +99,7 @@ class CustomUser(TuronBase):
     surname = Column(String(200))
     phone = Column(String(200))
     branch_id = Column(BigInteger, ForeignKey("branch_branch.id"))
+    is_active = Column(Boolean, default=True)
 
 
 class Student(TuronBase):
@@ -101,12 +127,21 @@ teacher_subjects = Table(
     Column("subject_id", BigInteger, ForeignKey("subjects_subject.id")),
 )
 
+# M2M: Teacher.branches -> teachers_teacher_branches
+teacher_branches = Table(
+    "teachers_teacher_branches",
+    TuronBase.metadata,
+    Column("teacher_id", BigInteger, ForeignKey("teachers_teacher.id")),
+    Column("branch_id", BigInteger, ForeignKey("branch_branch.id")),
+)
+
 
 class Teacher(TuronBase):
     # teachers app -> teachers_teacher
     __tablename__ = "teachers_teacher"
     id = Column(BigInteger, primary_key=True)
     user_id = Column(BigInteger, ForeignKey("user_customuser.id"))
+    deleted = Column(Boolean, default=False)
 
 
 class TeacherSalary(TuronBase):
@@ -265,6 +300,34 @@ class TuronInvestment(TuronBase):
     payment_type = Column(String(255), nullable=True)
     branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
     deleted = Column(Boolean, default=False)
+
+
+# ── Missions ──────────────────────────────────────────────────────────────────
+
+class TuronMission(TuronBase):
+    __tablename__ = "tasks_mission"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    title = Column(String(255))
+    description = Column(Text, nullable=True)
+    category = Column(String(50))
+    creator_id = Column(BigInteger, ForeignKey("user_customuser.id"))
+    executor_id = Column(BigInteger, ForeignKey("user_customuser.id"))
+    reviewer_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
+    start_date = Column(Date)
+    deadline = Column(Date)
+    finish_date = Column(Date, nullable=True)
+    status = Column(String(30))
+    kpi_weight = Column(Integer, default=10)
+    penalty_per_day = Column(Integer, default=2)
+    early_bonus_per_day = Column(Integer, default=1)
+    max_bonus = Column(Integer, default=3)
+    max_penalty = Column(Integer, default=10)
+    delay_days = Column(Integer, default=0)
+    final_sc = Column(Integer, default=0)
+    is_recurring = Column(Boolean, default=False)
+    created_at = Column(Date)
 
 
 # ── Overheads ─────────────────────────────────────────────────────────────────

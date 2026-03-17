@@ -12,7 +12,7 @@ from sqlalchemy import func, extract, exists, and_, or_, case, select
 
 from ...database import get_turon_db
 from ...external_models import turon as T
-from typing import List
+from typing import List, Optional
 from ...schemas_stats import (
     BranchItem,
     TuronSchoolStudentsOut, TuronTeacherSalariesOut,
@@ -37,6 +37,109 @@ def turon_branches(db: Session = Depends(get_turon_db)):
         .all()
     )
     return [{"id": r.id, "name": r.name} for r in rows]
+
+
+# ── People lists ─────────────────────────────────────────────────────────────
+
+@router.get("/directors")
+def turon_directors(
+    branch_id: Optional[int] = Query(None),
+    db: Session = Depends(get_turon_db),
+):
+    """List all active Turon directors (users in the 'director' group),
+    optionally filtered by branch via permissions_manybranch."""
+    q = (
+        db.query(T.CustomUser, T.ManyBranch, T.Branch)
+        .join(T.customuser_groups, T.CustomUser.id == T.customuser_groups.c.customuser_id)
+        .join(T.AuthGroup, T.AuthGroup.id == T.customuser_groups.c.group_id)
+        .join(T.ManyBranch, T.ManyBranch.user_id == T.CustomUser.id)
+        .join(T.Branch, T.Branch.id == T.ManyBranch.branch_id)
+        .filter(
+            T.AuthGroup.name == "direktor",
+            T.CustomUser.is_active == True,
+        )
+    )
+    if branch_id:
+        q = q.filter(T.ManyBranch.branch_id == branch_id)
+    rows = q.order_by(T.CustomUser.name).all()
+    return [
+        {
+            "id": user.id,
+            "name": user.name,
+            "surname": user.surname,
+            "phone": user.phone,
+            "branch_id": branch.id,
+            "branch_name": branch.name,
+        }
+        for user, many_branch, branch in rows
+    ]
+
+@router.get("/teachers")
+def turon_teachers(
+    branch_id: Optional[int] = Query(None),
+    db: Session = Depends(get_turon_db),
+):
+    """List active (deleted=False) Turon teachers, filtered by branch via M2M."""
+    q = (
+        db.query(T.Teacher, T.CustomUser)
+        .join(T.CustomUser, T.Teacher.user_id == T.CustomUser.id)
+        .filter(
+            or_(T.Teacher.deleted == False, T.Teacher.deleted == None),
+            T.CustomUser.is_active == True,
+        )
+    )
+    if branch_id:
+        q = q.join(
+            T.teacher_branches,
+            T.Teacher.id == T.teacher_branches.c.teacher_id,
+        ).filter(T.teacher_branches.c.branch_id == branch_id)
+    rows = q.order_by(T.CustomUser.name).all()
+    return [
+        {
+            "id": teacher.id,
+            "user_id": user.id,
+            "name": user.name,
+            "surname": user.surname,
+            "phone": user.phone,
+            "branch_id": user.branch_id,
+        }
+        for teacher, user in rows
+    ]
+
+
+@router.get("/staff")
+def turon_staff(
+    branch_id: Optional[int] = Query(None),
+    db: Session = Depends(get_turon_db),
+):
+    """List active staff/workers in Turon (CustomUsers who are not teachers),
+    optionally filtered by branch."""
+    teacher_user_ids = select(T.teacher_branches.c.teacher_id).correlate(None)
+    active_teacher_user_ids = (
+        db.query(T.Teacher.user_id)
+        .filter(or_(T.Teacher.deleted == False, T.Teacher.deleted == None))
+        .subquery()
+    )
+    q = (
+        db.query(T.CustomUser)
+        .filter(
+            T.CustomUser.is_active == True,
+            T.CustomUser.id.not_in(select(active_teacher_user_ids)),
+        )
+    )
+    if branch_id:
+        q = q.filter(T.CustomUser.branch_id == branch_id)
+    rows = q.order_by(T.CustomUser.name).all()
+    return [
+        {
+            "id": user.id,
+            "name": user.name,
+            "surname": user.surname,
+            "phone": user.phone,
+            "branch_id": user.branch_id,
+        }
+        for user in rows
+    ]
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

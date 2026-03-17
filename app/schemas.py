@@ -31,7 +31,7 @@ class RegisterRequest(BaseModel):
     password: str
     born_date: Optional[date] = None
     age: Optional[int] = None
-    job_id: int
+    job_id: Optional[int] = None
 
 
 class LoginRequest(BaseModel):
@@ -52,7 +52,7 @@ class UserCreate(BaseModel):
     born_date: Optional[date] = None
     password: Optional[str] = None
     age: Optional[int] = None
-    job_id: int
+    job_id: Optional[int] = None
     salary: Optional[int] = None
     role: Optional[str] = "user"
 
@@ -133,6 +133,18 @@ class SalaryDayOut(BaseModel):
 
 
 # ── Mission module ────────────────────────────────────────────────────────────
+
+class ChannelEnum(str, Enum):
+    line_management = "line_management"
+    project = "project"
+    service_request = "service_request"
+
+
+class ApprovalStatusEnum(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
 
 class CategoryEnum(str, Enum):
     ACADEMIC = "academic"
@@ -217,6 +229,7 @@ class MissionCreate(BaseModel):
     executor_id: int
     reviewer_id: Optional[int] = None
     branch_id: Optional[int] = None
+    location_id: Optional[int] = None
     deadline: date
     kpi_weight: int = 10
     penalty_per_day: int = 2
@@ -227,6 +240,10 @@ class MissionCreate(BaseModel):
     recurring_type: Optional[RecurringTypeEnum] = None
     repeat_every: int = 1
     tag_ids: List[int] = []
+    channel: ChannelEnum = ChannelEnum.line_management
+    project_id: Optional[int] = None
+    gennis_executor_id: Optional[int] = None
+    turon_executor_id: Optional[int] = None
 
 
 class MissionUpdate(BaseModel):
@@ -236,6 +253,7 @@ class MissionUpdate(BaseModel):
     executor_id: Optional[int] = None
     reviewer_id: Optional[int] = None
     branch_id: Optional[int] = None
+    location_id: Optional[int] = None
     deadline: Optional[date] = None
     finish_date: Optional[date] = None
     status: Optional[MissionStatusEnum] = None
@@ -248,6 +266,10 @@ class MissionUpdate(BaseModel):
     recurring_type: Optional[RecurringTypeEnum] = None
     repeat_every: Optional[int] = None
     tag_ids: Optional[List[int]] = None
+    channel: Optional[ChannelEnum] = None
+    project_id: Optional[int] = None
+    gennis_executor_id: Optional[int] = None
+    turon_executor_id: Optional[int] = None
 
 
 class MissionOut(BaseModel):
@@ -264,6 +286,7 @@ class MissionOut(BaseModel):
     is_redirected: bool
     redirected_at: Optional[datetime]
     branch_id: Optional[int]
+    location_id: Optional[int]
     start_date: date
     deadline: date
     finish_date: Optional[date]
@@ -281,6 +304,12 @@ class MissionOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     tags: List[TagOut] = []
+    channel: str
+    project_id: Optional[int]
+    approval_status: Optional[str]
+    approved_by_id: Optional[int]
+    gennis_executor_id: Optional[int]
+    turon_executor_id: Optional[int]
 
     model_config = {"from_attributes": True}
 
@@ -442,3 +471,79 @@ class NotificationOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Project ---
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ProjectMemberAdd(BaseModel):
+    user_id: int
+
+
+class ProjectMemberOut(BaseModel):
+    id: int
+    project_id: int
+    user_id: int
+    user: Optional["UserOut"] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectOut(BaseModel):
+    id: int
+    name: str
+    manager_id: int
+    description: Optional[str]
+    deleted: bool
+    created_at: datetime
+    members: List[ProjectMemberOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+# --- Section ---
+class SectionCreate(BaseModel):
+    name: str
+    leader_id: Optional[int] = None
+
+
+class SectionUpdate(BaseModel):
+    name: Optional[str] = None
+    leader_id: Optional[int] = None
+
+
+class SectionMemberAdd(BaseModel):
+    user_id: int
+
+
+class SectionMemberOut(BaseModel):
+    id: int
+    section_id: int
+    user_id: int
+    user: Optional["UserOut"] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SectionOut(BaseModel):
+    id: int
+    name: str
+    leader_id: Optional[int]
+    deleted: bool
+    created_at: datetime
+    members: List[SectionMemberOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+# --- Mission Approval ---
+class MissionApprove(BaseModel):
+    approval_status: ApprovalStatusEnum

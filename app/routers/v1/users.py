@@ -10,7 +10,10 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 @router.post("/", response_model=UserOut, status_code=201)
 def create_user(data: UserCreate, db: Session = Depends(get_db)):
-    user = User(**data.model_dump())
+    payload = data.model_dump()
+    if not payload.get("job_id"):
+        payload["job_id"] = None
+    user = User(**payload)
     db.add(user)
     db.commit()
     db.refresh(user)

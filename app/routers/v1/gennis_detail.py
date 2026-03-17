@@ -11,7 +11,7 @@ from sqlalchemy import and_, or_
 
 from ...database import get_gennis_db
 from ...external_models import gennis as G
-from typing import List, Union
+from typing import List, Optional, Union
 from ...schemas_stats import (
     BranchItem,
     GennisDebtorsOut,
@@ -29,6 +29,179 @@ def gennis_branches(db: Session = Depends(get_gennis_db)):
     """List all Gennis locations (branches)."""
     rows = db.query(G.Locations).order_by(G.Locations.id).all()
     return [{"id": r.id, "name": r.name} for r in rows]
+
+
+# ── People lists ─────────────────────────────────────────────────────────────
+
+@router.get("/directors")
+def gennis_directors(
+    location_id: Optional[int] = Query(None),
+    db: Session = Depends(get_gennis_db),
+):
+    """List active Gennis managers (Staff with profession 'manager'),
+    optionally filtered by location."""
+    q = (
+        db.query(G.Staff, G.Users, G.GennisProfessions, G.GennisRoles, G.EducationLanguage, G.Locations)
+        .join(G.Users, G.Staff.user_id == G.Users.id)
+        .join(G.GennisProfessions, G.Staff.profession_id == G.GennisProfessions.id)
+        .join(G.Locations, G.Users.location_id == G.Locations.id)
+        .outerjoin(G.GennisRoles, G.Users.role_id == G.GennisRoles.id)
+        .outerjoin(G.EducationLanguage, G.Users.education_language == G.EducationLanguage.id)
+        .filter(
+            G.GennisProfessions.name.ilike("manager"),
+            or_(G.Staff.deleted == False, G.Staff.deleted == None),
+            or_(G.Users.deleted == False, G.Users.deleted == None),
+        )
+    )
+    if location_id:
+        q = q.filter(G.Users.location_id == location_id)
+    rows = q.order_by(G.Users.name).all()
+    return [
+        {
+            "id": user.id,
+            "name": user.name.title() if user.name else None,
+            "surname": user.surname.title() if user.surname else None,
+            "username": user.username,
+            "age": user.age,
+            "job": profession.name,
+            "language": lang.name if lang else None,
+            "role": role.role if role else None,
+            "type_role": role.type_role if role else None,
+            "location_id": user.location_id,
+            "location_name": location.name,
+        }
+        for staff, user, profession, role, lang, location in rows
+    ]
+
+@router.get("/teachers")
+def gennis_teachers(
+    location_id: Optional[int] = Query(None),
+    db: Session = Depends(get_gennis_db),
+):
+    """List all active teachers in Gennis, optionally filtered by location."""
+    q = (
+        db.query(G.Teachers, G.Users)
+        .join(G.Users, G.Teachers.user_id == G.Users.id)
+        .outerjoin(G.DeletedTeachers, G.Teachers.id == G.DeletedTeachers.teacher_id)
+        .filter(G.DeletedTeachers.id == None)
+    )
+    if location_id:
+        q = q.filter(G.Users.location_id == location_id)
+    rows = q.order_by(G.Users.name).all()
+    return [
+        {
+            "id": teacher.id,
+            "user_id": user.id,
+            "name": user.name,
+            "surname": user.surname,
+            "location_id": user.location_id,
+        }
+        for teacher, user in rows
+    ]
+
+
+@router.get("/staff")
+def gennis_staff(
+    location_id: Optional[int] = Query(None),
+    db: Session = Depends(get_gennis_db),
+):
+    """List all active staff/workers in Gennis, optionally filtered by location."""
+    q = (
+        db.query(G.Staff, G.Users, G.GennisProfessions, G.GennisRoles, G.EducationLanguage)
+        .join(G.Users, G.Staff.user_id == G.Users.id)
+        .join(G.GennisProfessions, G.Staff.profession_id == G.GennisProfessions.id)
+        .outerjoin(G.GennisRoles, G.Users.role_id == G.GennisRoles.id)
+        .outerjoin(G.EducationLanguage, G.Users.education_language == G.EducationLanguage.id)
+        .filter(or_(G.Staff.deleted == False, G.Staff.deleted == None))
+    )
+    if location_id:
+        q = q.filter(G.Users.location_id == location_id)
+    rows = q.order_by(G.Users.name).all()
+    return [
+        {
+            "id": user.id,
+            "name": user.name.title() if user.name else None,
+            "surname": user.surname.title() if user.surname else None,
+            "username": user.username,
+            "age": user.age,
+            "job": profession.name,
+            "language": lang.name if lang else None,
+            "role": role.role if role else None,
+            "type_role": role.type_role if role else None,
+            "location_id": user.location_id,
+        }
+        for staff, user, profession, role, lang in rows
+    ]
+
+
+# ── Employees ─────────────────────────────────────────────────────────────────
+
+@router.get("/employees/{location_id}")
+def gennis_employees(
+    location_id: int,
+    status: Optional[str] = Query(None, description="Pass 'deleted' to list deleted staff"),
+    search: Optional[str] = Query(None),
+    job: Optional[str] = Query(None, description="Filter by profession name"),
+    language: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: Optional[int] = Query(50, ge=1),
+    db: Session = Depends(get_gennis_db),
+):
+    """List staff/employees for a Gennis location. Mirrors /api/account/employees/<location_id>."""
+    deleted_filter = G.Staff.deleted == True if status == "deleted" else or_(G.Staff.deleted == False, G.Staff.deleted == None)
+
+    q = (
+        db.query(G.Staff, G.Users, G.GennisProfessions, G.GennisRoles, G.EducationLanguage)
+        .join(G.Users, G.Staff.user_id == G.Users.id)
+        .join(G.GennisProfessions, G.Staff.profession_id == G.GennisProfessions.id)
+        .outerjoin(G.GennisRoles, G.Users.role_id == G.GennisRoles.id)
+        .outerjoin(G.EducationLanguage, G.Users.education_language == G.EducationLanguage.id)
+        .filter(
+            G.Users.location_id == location_id,
+            deleted_filter,
+        )
+        .order_by(G.Users.id)
+    )
+
+    if job:
+        q = q.filter(G.GennisProfessions.name == job)
+    if language:
+        q = q.filter(G.EducationLanguage.name.ilike(language))
+    if search:
+        pattern = f"%{search}%"
+        q = q.filter(or_(
+            G.Users.name.ilike(pattern),
+            G.Users.surname.ilike(pattern),
+            G.Users.username.ilike(pattern),
+        ))
+
+    total = q.count()
+    rows = q.offset(offset).limit(limit).all()
+
+    data = [
+        {
+            "id": user.id,
+            "name": user.name.title() if user.name else None,
+            "surname": user.surname.title() if user.surname else None,
+            "username": user.username,
+            "age": user.age,
+            "job": profession.name,
+            "language": lang.name if lang else None,
+            "role": role.role if role else None,
+            "type_role": role.type_role if role else None,
+        }
+        for staff, user, profession, role, lang in rows
+    ]
+
+    return {
+        "data": data,
+        "pagination": {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "has_more": (offset + limit) < total,
+        },
+    }
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 Read-only SQLAlchemy models mapped to the Gennis education center database.
 Only columns needed for statistics are declared.
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, ForeignKey, Text
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, ForeignKey, Text
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -53,12 +53,32 @@ class Subjects(GennisBase):
 
 # ── Users / people ────────────────────────────────────────────────────────────
 
+class GennisRoles(GennisBase):
+    __tablename__ = "roles"
+    id = Column(Integer, primary_key=True)
+    role = Column(String)
+    type_role = Column(String)
+
+
+class EducationLanguage(GennisBase):
+    __tablename__ = "educationlanguage"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+
+
 class Users(GennisBase):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     name = Column(String)
     surname = Column(String)
+    username = Column(String)
+    age = Column(Integer)
     location_id = Column(Integer, ForeignKey("locations.id"))
+    education_language = Column(Integer, ForeignKey("educationlanguage.id"))
+    role_id = Column(Integer, ForeignKey("roles.id"))
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"))
+    director = Column(Boolean, default=False)
+    deleted = Column(Boolean, default=False)
 
 
 class Students(GennisBase):
@@ -95,10 +115,17 @@ class Assistent(GennisBase):
     deleted = Column(Boolean, default=False)
 
 
+class GennisProfessions(GennisBase):
+    __tablename__ = "professions"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+
+
 class Staff(GennisBase):
     __tablename__ = "staff"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+    profession_id = Column(Integer, ForeignKey("professions.id"))
     deleted = Column(Boolean, default=False)
     deleted_comment = Column(String)
     deleted_date = Column(DateTime)
@@ -266,6 +293,34 @@ class GennisInvestment(GennisBase):
     payment_type = Column(String(255), nullable=True)
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     deleted = Column(Boolean, default=False)
+
+
+# ── Missions ──────────────────────────────────────────────────────────────────
+
+class GennisMission(GennisBase):
+    __tablename__ = "missions"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    title = Column(String(255))
+    description = Column(Text, nullable=True)
+    category = Column(String(50))
+    creator_id = Column(Integer, ForeignKey("users.id"))
+    executor_id = Column(Integer, ForeignKey("users.id"))
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    start_datetime = Column(DateTime)
+    deadline_datetime = Column(DateTime)
+    finish_datetime = Column(DateTime, nullable=True)
+    status = Column(String(30))
+    kpi_weight = Column(Integer, default=10)
+    penalty_per_day = Column(Integer, default=2)
+    early_bonus_per_day = Column(Integer, default=1)
+    max_bonus = Column(Integer, default=3)
+    max_penalty = Column(Integer, default=10)
+    delay_days = Column(Integer, default=0)
+    final_sc = Column(Integer, default=0)
+    is_recurring = Column(Boolean, default=False)
+    created_at = Column(DateTime)
 
 
 # ── Overheads ─────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from sqlalchemy import text
 from .database import engine, gennis_write_engine, turon_write_engine
 from .external_models.gennis import GennisDividend, GennisInvestment
 from .external_models.turon import TuronDividend, TuronInvestment
@@ -17,15 +18,30 @@ from .routers.v1 import (
     turon_detail,
     dividends,
     investments,
+    projects,
+    sections,
 )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create management_dividend table in Gennis and dividend table in Turon if not exist
+    # Create management_dividend/investment tables in external DBs if not exist
     GennisDividend.__table__.create(bind=gennis_write_engine, checkfirst=True)
     TuronDividend.__table__.create(bind=turon_write_engine, checkfirst=True)
     GennisInvestment.__table__.create(bind=gennis_write_engine, checkfirst=True)
     TuronInvestment.__table__.create(bind=turon_write_engine, checkfirst=True)
+
+    # Add management_id to Gennis missions table and Turon tasks_mission table
+    with gennis_write_engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE missions ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"
+        ))
+        conn.commit()
+    with turon_write_engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE tasks_mission ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"
+        ))
+        conn.commit()
+
     yield
 
 
@@ -68,6 +84,8 @@ app.include_router(gennis_detail.router, prefix=V1)
 app.include_router(turon_detail.router, prefix=V1)
 app.include_router(dividends.router, prefix=V1)
 app.include_router(investments.router, prefix=V1)
+app.include_router(projects.router, prefix=V1)
+app.include_router(sections.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)

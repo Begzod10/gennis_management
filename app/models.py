@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, BigInteger, String, Date, DateTime, ForeignKey, Boolean, Integer, Text, Table
+from sqlalchemy import Column, BigInteger, String, Date, DateTime, ForeignKey, Boolean, Integer, Text, Table, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -85,6 +85,36 @@ class SalaryDay(Base):
     user = relationship("User", back_populates="salary_days")
 
 
+# ── Project module ────────────────────────────────────────────────────────────
+
+class Project(Base):
+    __tablename__ = "project"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    manager_id = Column(BigInteger, ForeignKey("user.id"), nullable=False)
+    description = Column(Text, nullable=True)
+    deleted = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    manager = relationship("User", foreign_keys=[manager_id])
+    members = relationship("ProjectMember", back_populates="project", cascade="all, delete-orphan")
+    missions = relationship("Mission", back_populates="project")
+
+
+class ProjectMember(Base):
+    __tablename__ = "project_member"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    project_id = Column(BigInteger, ForeignKey("project.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("user.id"), nullable=False)
+
+    __table_args__ = (UniqueConstraint("project_id", "user_id"),)
+
+    project = relationship("Project", back_populates="members")
+    user = relationship("User")
+
+
 # ── Mission module ────────────────────────────────────────────────────────────
 
 class SystemModel(Base):
@@ -148,6 +178,14 @@ class Mission(Base):
     redirected_at = Column(DateTime, nullable=True)
 
     branch_id = Column(BigInteger, ForeignKey("branch.id"), nullable=True)
+    location_id = Column(Integer, nullable=True)   # Gennis location ID for routing
+
+    channel = Column(String(30), default="line_management", nullable=False)
+    project_id = Column(BigInteger, ForeignKey("project.id"), nullable=True)
+    approval_status = Column(String(20), nullable=True)
+    approved_by_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    gennis_executor_id = Column(Integer, nullable=True)
+    turon_executor_id = Column(BigInteger, nullable=True)
 
     start_date = Column(Date, server_default=func.current_date())
     deadline = Column(Date, nullable=False)
@@ -176,7 +214,9 @@ class Mission(Base):
     reviewer = relationship("User", foreign_keys=[reviewer_id])
     original_executor = relationship("User", foreign_keys=[original_executor_id])
     redirected_by = relationship("User", foreign_keys=[redirected_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
     branch = relationship("Branch", back_populates="missions")
+    project = relationship("Project", back_populates="missions")
     tags = relationship("Tag", secondary="mission_tag", back_populates="missions")
     subtasks = relationship("MissionSubtask", back_populates="mission", cascade="all, delete-orphan")
     attachments = relationship("MissionAttachment", back_populates="mission", cascade="all, delete-orphan")
@@ -255,6 +295,32 @@ class MissionProof(Base):
     deleted = Column(Boolean, nullable=False, default=False)
 
     mission = relationship("Mission", back_populates="proofs")
+
+
+class Section(Base):
+    __tablename__ = "section"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    leader_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    deleted = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    leader = relationship("User", foreign_keys=[leader_id])
+    members = relationship("SectionMember", back_populates="section", cascade="all, delete-orphan")
+
+
+class SectionMember(Base):
+    __tablename__ = "section_member"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    section_id = Column(BigInteger, ForeignKey("section.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("user.id"), nullable=False)
+
+    __table_args__ = (UniqueConstraint("section_id", "user_id"),)
+
+    section = relationship("Section", back_populates="members")
+    user = relationship("User")
 
 
 class Dividend(Base):
