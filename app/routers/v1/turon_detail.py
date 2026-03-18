@@ -50,13 +50,14 @@ def turon_directors(
     optionally filtered by branch via permissions_manybranch."""
     q = (
         db.query(T.CustomUser, T.ManyBranch, T.Branch)
-        .join(T.customuser_groups, T.CustomUser.id == T.customuser_groups.c.customuser_id)
-        .join(T.AuthGroup, T.AuthGroup.id == T.customuser_groups.c.group_id)
+        .join(T.CustomAutoGroup, T.CustomAutoGroup.user_id == T.CustomUser.id)
+        .join(T.AuthGroup, T.AuthGroup.id == T.CustomAutoGroup.group_id)
         .join(T.ManyBranch, T.ManyBranch.user_id == T.CustomUser.id)
         .join(T.Branch, T.Branch.id == T.ManyBranch.branch_id)
         .filter(
-            T.AuthGroup.name == "direktor",
+            T.AuthGroup.name == "Direktor",
             T.CustomUser.is_active == True,
+            or_(T.CustomAutoGroup.deleted == False, T.CustomAutoGroup.deleted == None),
         )
     )
     if branch_id:

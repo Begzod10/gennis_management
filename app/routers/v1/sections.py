@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from ...database import get_db
 from ...models import Section, SectionMember, User
-from ...schemas import SectionCreate, SectionUpdate, SectionOut, SectionMemberAdd, SectionMemberOut
+from ...schemas import SectionCreate, SectionUpdate, SectionOut, SectionMemberAdd, SectionMemberOut, UserOut
 
 router = APIRouter(prefix="/sections", tags=["Sections"])
 
@@ -90,6 +90,20 @@ def remove_member(section_id: int, user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Member not found")
     db.delete(member)
     db.commit()
+
+
+@router.get("/leaders", response_model=List[UserOut])
+def list_section_leaders(db: Session = Depends(get_db)):
+    """Return all users who are leaders of at least one section."""
+    leaders = (
+        db.query(User)
+        .join(Section, Section.leader_id == User.id)
+        .filter(Section.deleted == False, User.deleted == False)
+        .distinct()
+        .order_by(User.name)
+        .all()
+    )
+    return leaders
 
 
 @router.get("/{section_id}/members", response_model=List[SectionMemberOut])

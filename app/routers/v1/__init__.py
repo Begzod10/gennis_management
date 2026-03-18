@@ -11,4 +11,5 @@ from . import (
     investments,
     projects,
     sections,
+    combined,
 )

@@ -178,6 +178,7 @@ class Mission(Base):
     redirected_at = Column(DateTime, nullable=True)
 
     branch_id = Column(BigInteger, ForeignKey("branch.id"), nullable=True)
+    system_id = Column(BigInteger, ForeignKey("system_model.id"), nullable=True)
     location_id = Column(Integer, nullable=True)   # Gennis location ID for routing
 
     channel = Column(String(30), default="line_management", nullable=False)
@@ -216,6 +217,7 @@ class Mission(Base):
     redirected_by = relationship("User", foreign_keys=[redirected_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     branch = relationship("Branch", back_populates="missions")
+    system_model = relationship("SystemModel", foreign_keys=[system_id])
     project = relationship("Project", back_populates="missions")
     tags = relationship("Tag", secondary="mission_tag", back_populates="missions")
     subtasks = relationship("MissionSubtask", back_populates="mission", cascade="all, delete-orphan")

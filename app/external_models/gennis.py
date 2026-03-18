@@ -305,6 +305,7 @@ class GennisMission(GennisBase):
     description = Column(Text, nullable=True)
     category = Column(String(50))
     creator_id = Column(Integer, ForeignKey("users.id"))
+    creator_name = Column(String(255), nullable=True)
     executor_id = Column(Integer, ForeignKey("users.id"))
     reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)

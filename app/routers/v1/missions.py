@@ -3,13 +3,13 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from ...database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
-from ...models import Mission, Tag, User, ProjectMember
+from ...models import Mission, Tag, User, ProjectMember, Branch, Project
 from ...schemas import (
-    MissionCreate, MissionUpdate, MissionOut, MissionStatusEnum,
+    MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
     MissionApprove,
 )
 from ...external_models.gennis import GennisMission, Users as GennisUsers, Staff as GennisStaff, GennisProfessions
-from ...external_models.turon import TuronMission, CustomUser as TuronUser, AuthGroup, customuser_groups, ManyBranch
+from ...external_models.turon import TuronMission, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
 from pydantic import BaseModel
 
 
@@ -106,6 +106,29 @@ def _validate_role_assignment(
         )
 
 
+# ── Owner permission check ───────────────────────────────────────────────────
+
+OWNER_ROLES = {"owner"}
+
+def _check_owner_permission(creator: User, project_id: Optional[int], db: Session):
+    """Only the project owner or a top-level role can assign to external directors/managers."""
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id, Project.deleted == False).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if creator.id != project.manager_id and creator.role not in OWNER_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the project owner can assign missions to external directors/managers",
+            )
+    else:
+        if creator.role not in OWNER_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail="Only super_admin or director can assign missions to external directors/managers",
+            )
+
+
 # ── Director auto-fill ────────────────────────────────────────────────────────
 
 def _find_gennis_manager(location_id: int, gennis_db: Session) -> Optional[int]:
@@ -127,15 +150,17 @@ def _find_gennis_manager(location_id: int, gennis_db: Session) -> Optional[int]:
 
 def _find_turon_director(branch_id: int, turon_db: Session) -> Optional[int]:
     """Return the Turon CustomUser ID of the active director for a branch."""
+    from sqlalchemy import or_
     user = (
         turon_db.query(TuronUser)
-        .join(customuser_groups, TuronUser.id == customuser_groups.c.customuser_id)
-        .join(AuthGroup, AuthGroup.id == customuser_groups.c.group_id)
+        .join(CustomAutoGroup, CustomAutoGroup.user_id == TuronUser.id)
+        .join(AuthGroup, AuthGroup.id == CustomAutoGroup.group_id)
         .join(ManyBranch, ManyBranch.user_id == TuronUser.id)
         .filter(
-            AuthGroup.name == "direktor",
+            AuthGroup.name == "Direktor",
             ManyBranch.branch_id == branch_id,
             TuronUser.is_active == True,
+            or_(CustomAutoGroup.deleted == False, CustomAutoGroup.deleted == None),
         )
         .first()
     )
@@ -144,17 +169,11 @@ def _find_turon_director(branch_id: int, turon_db: Session) -> Optional[int]:
 
 # ── Sync helpers ──────────────────────────────────────────────────────────────
 
-def _should_sync(mission: Mission) -> bool:
-    """Sync when branch_id/location_id (routing) OR explicit executor IDs are set."""
-    return bool(
-        mission.branch_id or mission.location_id
-        or mission.gennis_executor_id or mission.turon_executor_id
-    )
-
-
 def _sync_to_gennis(mission: Mission, gennis_db: Session):
-    if not _should_sync(mission):
+    # Only sync if we have a valid executor to assign in Gennis
+    if not mission.gennis_executor_id:
         return
+    deadline_dt = datetime.combine(mission.deadline, datetime.min.time()) if mission.deadline else None
     existing = (
         gennis_db.query(GennisMission)
         .filter(GennisMission.management_id == mission.id)
@@ -165,9 +184,10 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
         existing.description = mission.description
         existing.category = mission.category
         existing.status = mission.status
-        existing.deadline_datetime = datetime.combine(mission.deadline, datetime.min.time()) if mission.deadline else None
+        existing.deadline_datetime = deadline_dt
         existing.location_id = mission.location_id
         existing.creator_id = mission.gennis_executor_id
+        existing.creator_name = "from office"
         existing.executor_id = mission.gennis_executor_id
         existing.kpi_weight = mission.kpi_weight
         existing.delay_days = mission.delay_days
@@ -179,9 +199,11 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
             description=mission.description,
             category=mission.category,
             status=mission.status,
-            deadline_datetime=datetime.combine(mission.deadline, datetime.min.time()) if mission.deadline else None,
+            start_datetime=mission.created_at,
+            deadline_datetime=deadline_dt,
             location_id=mission.location_id,
             creator_id=mission.gennis_executor_id,
+            creator_name="from office",
             executor_id=mission.gennis_executor_id,
             kpi_weight=mission.kpi_weight,
             delay_days=mission.delay_days,
@@ -193,7 +215,8 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
 
 
 def _sync_to_turon(mission: Mission, turon_db: Session):
-    if not _should_sync(mission):
+    # Only sync if we have a valid executor to assign in Turon
+    if not mission.turon_executor_id:
         return
     existing = (
         turon_db.query(TuronMission)
@@ -208,6 +231,7 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
         existing.deadline = mission.deadline
         existing.branch_id = mission.branch_id
         existing.creator_id = mission.turon_executor_id
+        existing.creator_name = "from office"
         existing.executor_id = mission.turon_executor_id
         existing.kpi_weight = mission.kpi_weight
         existing.delay_days = mission.delay_days
@@ -219,9 +243,11 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
             description=mission.description,
             category=mission.category,
             status=mission.status,
+            start_date=mission.created_at.date() if mission.created_at else None,
             deadline=mission.deadline,
             branch_id=mission.branch_id,
             creator_id=mission.turon_executor_id,
+            creator_name="from office",
             executor_id=mission.turon_executor_id,
             kpi_weight=mission.kpi_weight,
             delay_days=mission.delay_days,
@@ -255,7 +281,7 @@ def _sync_delete(mission: Mission, gennis_db: Session, turon_db: Session):
 
 # ── Mission CRUD ──────────────────────────────────────────────────────────────
 
-@router.post("/", response_model=MissionOut, status_code=201)
+@router.post("/", response_model=List[MissionOut], status_code=201)
 def create_mission(
     data: MissionCreate,
     creator_id: int,
@@ -266,34 +292,109 @@ def create_mission(
     creator = db.query(User).filter(User.id == creator_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
-    executor = db.query(User).filter(User.id == data.executor_id).first()
-    if not executor:
-        raise HTTPException(status_code=404, detail="Executor not found")
 
-    _validate_role_assignment(creator, executor, data.channel.value, data.project_id, db)
+    base = data.model_dump(exclude={"tag_ids", "executor_ids"})
 
-    payload = data.model_dump(exclude={"tag_ids"})
+    # Auto-fill system_id from branch when not explicitly set
+    if base.get("branch_id") and not base.get("system_id"):
+        branch = db.query(Branch).filter(Branch.id == base["branch_id"]).first()
+        if branch and branch.system_model_id:
+            base["system_id"] = branch.system_model_id
 
     # Auto-fill executor IDs from branch/location directors when not explicitly set
-    if payload.get("location_id") and not payload.get("gennis_executor_id"):
-        payload["gennis_executor_id"] = _find_gennis_manager(payload["location_id"], gennis_db)
-    if payload.get("branch_id") and not payload.get("turon_executor_id"):
-        payload["turon_executor_id"] = _find_turon_director(payload["branch_id"], turon_db)
+    if base.get("location_id") and not base.get("gennis_executor_id"):
+        base["gennis_executor_id"] = _find_gennis_manager(base["location_id"], gennis_db)
+    if base.get("branch_id") and not base.get("turon_executor_id"):
+        base["turon_executor_id"] = _find_turon_director(base["branch_id"], turon_db)
 
-    mission = Mission(**payload, creator_id=creator_id)
+    # Only owners can assign to external directors/managers
+    if base.get("gennis_executor_id") or base.get("turon_executor_id"):
+        _check_owner_permission(creator, base.get("project_id"), db)
 
-    if data.tag_ids:
-        tags = db.query(Tag).filter(Tag.id.in_(data.tag_ids)).all()
+    tags = db.query(Tag).filter(Tag.id.in_(data.tag_ids)).all() if data.tag_ids else []
+
+    created = []
+    for executor_id in data.executor_ids:
+        executor = db.query(User).filter(User.id == executor_id).first()
+        if not executor:
+            raise HTTPException(status_code=404, detail=f"Executor {executor_id} not found")
+        _validate_role_assignment(creator, executor, data.channel.value, data.project_id, db)
+
+        mission = Mission(**base, executor_id=executor_id, creator_id=creator_id)
         mission.tags = tags
+        db.add(mission)
+        db.commit()
+        db.refresh(mission)
+        _sync_to_gennis(mission, gennis_db)
+        _sync_to_turon(mission, turon_db)
+        created.append(mission)
 
-    db.add(mission)
-    db.commit()
-    db.refresh(mission)
+    return created
 
-    _sync_to_gennis(mission, gennis_db)
-    _sync_to_turon(mission, turon_db)
 
-    return mission
+@router.post("/bulk", response_model=List[MissionOut], status_code=201)
+def create_bulk_missions(
+    data: MissionBulkCreate,
+    creator_id: int,
+    db: Session = Depends(get_db),
+    gennis_db: Session = Depends(get_gennis_write_db),
+    turon_db: Session = Depends(get_turon_write_db),
+):
+    """Create one mission per each internal executor ID, Gennis manager ID, and Turon director ID provided."""
+    creator = db.query(User).filter(User.id == creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+
+    if not data.executor_ids and not data.gennis_executor_ids and not data.turon_executor_ids:
+        raise HTTPException(status_code=400, detail="At least one executor ID must be provided")
+
+    _check_owner_permission(creator, data.project_id, db)
+
+    base = data.model_dump(exclude={"tag_ids", "executor_ids", "gennis_executor_ids", "turon_executor_ids"})
+
+    # Auto-fill system_id from branch
+    if base.get("branch_id") and not base.get("system_id"):
+        branch = db.query(Branch).filter(Branch.id == base["branch_id"]).first()
+        if branch and branch.system_model_id:
+            base["system_id"] = branch.system_model_id
+
+    tags = db.query(Tag).filter(Tag.id.in_(data.tag_ids)).all() if data.tag_ids else []
+
+    created = []
+
+    for executor_id in data.executor_ids:
+        executor = db.query(User).filter(User.id == executor_id).first()
+        if not executor:
+            raise HTTPException(status_code=404, detail=f"Executor {executor_id} not found")
+        _validate_role_assignment(creator, executor, data.channel.value, data.project_id, db)
+        mission = Mission(**base, executor_id=executor_id, creator_id=creator_id)
+        mission.tags = tags
+        db.add(mission)
+        db.commit()
+        db.refresh(mission)
+        _sync_to_gennis(mission, gennis_db)
+        _sync_to_turon(mission, turon_db)
+        created.append(mission)
+
+    for gid in data.gennis_executor_ids:
+        mission = Mission(**base, executor_id=creator_id, creator_id=creator_id, gennis_executor_id=gid, turon_executor_id=None)
+        mission.tags = tags
+        db.add(mission)
+        db.commit()
+        db.refresh(mission)
+        _sync_to_gennis(mission, gennis_db)
+        created.append(mission)
+
+    for tid in data.turon_executor_ids:
+        mission = Mission(**base, executor_id=creator_id, creator_id=creator_id, turon_executor_id=tid, gennis_executor_id=None)
+        mission.tags = tags
+        db.add(mission)
+        db.commit()
+        db.refresh(mission)
+        _sync_to_turon(mission, turon_db)
+        created.append(mission)
+
+    return created
 
 
 @router.get("/", response_model=List[MissionOut])
@@ -352,6 +453,18 @@ def update_mission(
     if "finish_date" in payload or "deadline" in payload:
         mission.calculate_delay_days()
         mission.final_sc = mission.final_score()
+
+    # Auto-fill system_id from branch if branch changed
+    if "branch_id" in payload and not mission.system_id:
+        branch = db.query(Branch).filter(Branch.id == mission.branch_id).first()
+        if branch and branch.system_model_id:
+            mission.system_id = branch.system_model_id
+
+    # Auto-fill executor IDs from location/branch if changed and not explicitly set
+    if "location_id" in payload and "gennis_executor_id" not in payload:
+        mission.gennis_executor_id = _find_gennis_manager(mission.location_id, gennis_db)
+    if "branch_id" in payload and "turon_executor_id" not in payload:
+        mission.turon_executor_id = _find_turon_director(mission.branch_id, turon_db)
 
     db.commit()
     db.refresh(mission)

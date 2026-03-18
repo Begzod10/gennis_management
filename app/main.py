@@ -20,6 +20,7 @@ from .routers.v1 import (
     investments,
     projects,
     sections,
+    combined,
 )
 
 @asynccontextmanager
@@ -32,14 +33,12 @@ async def lifespan(app: FastAPI):
 
     # Add management_id to Gennis missions table and Turon tasks_mission table
     with gennis_write_engine.connect() as conn:
-        conn.execute(text(
-            "ALTER TABLE missions ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"
-        ))
+        conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+        conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
         conn.commit()
     with turon_write_engine.connect() as conn:
-        conn.execute(text(
-            "ALTER TABLE tasks_mission ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"
-        ))
+        conn.execute(text("ALTER TABLE tasks_mission ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+        conn.execute(text("ALTER TABLE tasks_mission ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
         conn.commit()
 
     yield
@@ -86,6 +85,7 @@ app.include_router(dividends.router, prefix=V1)
 app.include_router(investments.router, prefix=V1)
 app.include_router(projects.router, prefix=V1)
 app.include_router(sections.router, prefix=V1)
+app.include_router(combined.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)

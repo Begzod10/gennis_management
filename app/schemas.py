@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import date, datetime
 from typing import Optional, List
 from enum import Enum
@@ -226,9 +226,10 @@ class MissionCreate(BaseModel):
     title: str
     description: Optional[str] = None
     category: CategoryEnum = CategoryEnum.ACADEMIC
-    executor_id: int
+    executor_ids: List[int]
     reviewer_id: Optional[int] = None
     branch_id: Optional[int] = None
+    system_id: Optional[int] = None
     location_id: Optional[int] = None
     deadline: date
     kpi_weight: int = 10
@@ -245,6 +246,41 @@ class MissionCreate(BaseModel):
     gennis_executor_id: Optional[int] = None
     turon_executor_id: Optional[int] = None
 
+    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "gennis_executor_id", "turon_executor_id", mode="before")
+    @classmethod
+    def zero_to_none(cls, v):
+        return None if v == 0 else v
+
+
+class MissionBulkCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    category: CategoryEnum = CategoryEnum.ACADEMIC
+    executor_ids: List[int]
+    reviewer_id: Optional[int] = None
+    branch_id: Optional[int] = None
+    system_id: Optional[int] = None
+    location_id: Optional[int] = None
+    deadline: date
+    kpi_weight: int = 10
+    penalty_per_day: int = 2
+    early_bonus_per_day: int = 1
+    max_bonus: int = 3
+    max_penalty: int = 10
+    is_recurring: bool = False
+    recurring_type: Optional[RecurringTypeEnum] = None
+    repeat_every: int = 1
+    tag_ids: List[int] = []
+    channel: ChannelEnum = ChannelEnum.line_management
+    project_id: Optional[int] = None
+    gennis_executor_ids: List[int] = []
+    turon_executor_ids: List[int] = []
+
+    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", mode="before")
+    @classmethod
+    def zero_to_none(cls, v):
+        return None if v == 0 else v
+
 
 class MissionUpdate(BaseModel):
     title: Optional[str] = None
@@ -253,6 +289,7 @@ class MissionUpdate(BaseModel):
     executor_id: Optional[int] = None
     reviewer_id: Optional[int] = None
     branch_id: Optional[int] = None
+    system_id: Optional[int] = None
     location_id: Optional[int] = None
     deadline: Optional[date] = None
     finish_date: Optional[date] = None
@@ -271,6 +308,11 @@ class MissionUpdate(BaseModel):
     gennis_executor_id: Optional[int] = None
     turon_executor_id: Optional[int] = None
 
+    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "executor_id", "gennis_executor_id", "turon_executor_id", mode="before")
+    @classmethod
+    def zero_to_none(cls, v):
+        return None if v == 0 else v
+
 
 class MissionOut(BaseModel):
     id: int
@@ -286,6 +328,7 @@ class MissionOut(BaseModel):
     is_redirected: bool
     redirected_at: Optional[datetime]
     branch_id: Optional[int]
+    system_id: Optional[int]
     location_id: Optional[int]
     start_date: date
     deadline: date
@@ -310,6 +353,9 @@ class MissionOut(BaseModel):
     approved_by_id: Optional[int]
     gennis_executor_id: Optional[int]
     turon_executor_id: Optional[int]
+    creator: Optional[UserOut] = None
+    executor: Optional[UserOut] = None
+    reviewer: Optional[UserOut] = None
 
     model_config = {"from_attributes": True}
 

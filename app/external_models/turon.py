@@ -28,6 +28,14 @@ customuser_groups = Table(
 )
 
 
+class CustomAutoGroup(TuronBase):
+    __tablename__ = "user_customautogroup"
+    id = Column(BigInteger, primary_key=True)
+    group_id = Column(Integer, ForeignKey("auth_group.id"))
+    user_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    deleted = Column(Boolean, default=False, nullable=True)
+
+
 class ManyBranch(TuronBase):
     """permissions app → permissions_manybranch: user ↔ branch access mapping."""
     __tablename__ = "permissions_manybranch"
@@ -312,6 +320,7 @@ class TuronMission(TuronBase):
     description = Column(Text, nullable=True)
     category = Column(String(50))
     creator_id = Column(BigInteger, ForeignKey("user_customuser.id"))
+    creator_name = Column(String(255), nullable=True)
     executor_id = Column(BigInteger, ForeignKey("user_customuser.id"))
     reviewer_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
     branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
