@@ -308,6 +308,7 @@ class GennisMission(GennisBase):
     creator_name = Column(String(255), nullable=True)
     executor_id = Column(Integer, ForeignKey("users.id"))
     reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewer_name = Column(String(255), nullable=True)
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     start_datetime = Column(DateTime)
     deadline_datetime = Column(DateTime)
@@ -322,6 +323,53 @@ class GennisMission(GennisBase):
     final_sc = Column(Integer, default=0)
     is_recurring = Column(Boolean, default=False)
     created_at = Column(DateTime)
+
+
+# ── Mission sub-records ───────────────────────────────────────────────────────
+
+class GennisMissionSubtask(GennisBase):
+    __tablename__ = "mission_subtasks"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(Integer, ForeignKey("missions.id"))
+    title = Column(String(255))
+    is_done = Column(Boolean, default=False)
+    order = Column(Integer, default=0)
+    creator_name = Column(String(255), nullable=True)
+
+
+class GennisMissionAttachment(GennisBase):
+    __tablename__ = "mission_attachments"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(Integer, ForeignKey("missions.id"))
+    file_path = Column(String(500))
+    note = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime, nullable=True)
+    creator_name = Column(String(255), nullable=True)
+
+
+class GennisMissionComment(GennisBase):
+    __tablename__ = "mission_comments"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(Integer, ForeignKey("missions.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    text = Column(Text)
+    attachment_path = Column(String(500), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    creator_name = Column(String(255), nullable=True)
+
+
+class GennisMissionProof(GennisBase):
+    __tablename__ = "mission_proofs"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(Integer, ForeignKey("missions.id"))
+    file_path = Column(String(500))
+    comment = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    creator_name = Column(String(255), nullable=True)
 
 
 # ── Overheads ─────────────────────────────────────────────────────────────────

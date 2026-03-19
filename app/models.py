@@ -138,8 +138,6 @@ class Branch(Base):
 
     system_model = relationship("SystemModel", back_populates="branches")
 
-    missions = relationship("Mission", back_populates="branch")
-
 
 class Tag(Base):
     __tablename__ = "tag"
@@ -177,16 +175,24 @@ class Mission(Base):
     is_redirected = Column(Boolean, default=False)
     redirected_at = Column(DateTime, nullable=True)
 
-    branch_id = Column(BigInteger, ForeignKey("branch.id"), nullable=True)
+    branch_id = Column(BigInteger, nullable=True)
+    branch_name = Column(String(255), nullable=True)
     system_id = Column(BigInteger, ForeignKey("system_model.id"), nullable=True)
     location_id = Column(Integer, nullable=True)   # Gennis location ID for routing
+    location_name = Column(String(255), nullable=True)
 
     channel = Column(String(30), default="line_management", nullable=False)
     project_id = Column(BigInteger, ForeignKey("project.id"), nullable=True)
     approval_status = Column(String(20), nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
     gennis_executor_id = Column(Integer, nullable=True)
+    gennis_executor_name = Column(String(255), nullable=True)
+    gennis_reviewer_id = Column(Integer, nullable=True)
+    gennis_reviewer_name = Column(String(255), nullable=True)
     turon_executor_id = Column(BigInteger, nullable=True)
+    turon_executor_name = Column(String(255), nullable=True)
+    turon_reviewer_id = Column(BigInteger, nullable=True)
+    turon_reviewer_name = Column(String(255), nullable=True)
 
     start_date = Column(Date, server_default=func.current_date())
     deadline = Column(Date, nullable=False)
@@ -216,7 +222,6 @@ class Mission(Base):
     original_executor = relationship("User", foreign_keys=[original_executor_id])
     redirected_by = relationship("User", foreign_keys=[redirected_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
-    branch = relationship("Branch", back_populates="missions")
     system_model = relationship("SystemModel", foreign_keys=[system_id])
     project = relationship("Project", back_populates="missions")
     tags = relationship("Tag", secondary="mission_tag", back_populates="missions")

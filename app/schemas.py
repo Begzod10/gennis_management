@@ -244,23 +244,35 @@ class MissionCreate(BaseModel):
     channel: ChannelEnum = ChannelEnum.line_management
     project_id: Optional[int] = None
     gennis_executor_id: Optional[int] = None
+    gennis_reviewer_id: Optional[int] = None
     turon_executor_id: Optional[int] = None
+    turon_reviewer_id: Optional[int] = None
 
-    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "gennis_executor_id", "turon_executor_id", mode="before")
+    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "gennis_executor_id", "gennis_reviewer_id", "turon_executor_id", "turon_reviewer_id", mode="before")
     @classmethod
     def zero_to_none(cls, v):
         return None if v == 0 else v
+
+
+class GennisExecutorItem(BaseModel):
+
+    id: int
+    location_id: Optional[int] = None
+    location_name: Optional[str] = None
+
+
+class TuronExecutorItem(BaseModel):
+    id: int
+    branch_id: Optional[int] = None
+    branch_name: Optional[str] = None
 
 
 class MissionBulkCreate(BaseModel):
     title: str
     description: Optional[str] = None
     category: CategoryEnum = CategoryEnum.ACADEMIC
-    executor_ids: List[int]
+    executor_ids: List[int] = []
     reviewer_id: Optional[int] = None
-    branch_id: Optional[int] = None
-    system_id: Optional[int] = None
-    location_id: Optional[int] = None
     deadline: date
     kpi_weight: int = 10
     penalty_per_day: int = 2
@@ -273,10 +285,13 @@ class MissionBulkCreate(BaseModel):
     tag_ids: List[int] = []
     channel: ChannelEnum = ChannelEnum.line_management
     project_id: Optional[int] = None
-    gennis_executor_ids: List[int] = []
-    turon_executor_ids: List[int] = []
+    system_id: Optional[int] = None
+    gennis_executor_ids: List[GennisExecutorItem] = []
+    gennis_reviewer_id: Optional[int] = None
+    turon_executor_ids: List[TuronExecutorItem] = []
+    turon_reviewer_id: Optional[int] = None
 
-    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", mode="before")
+    @field_validator("project_id", "system_id", "reviewer_id", "gennis_reviewer_id", "turon_reviewer_id", mode="before")
     @classmethod
     def zero_to_none(cls, v):
         return None if v == 0 else v
@@ -306,9 +321,11 @@ class MissionUpdate(BaseModel):
     channel: Optional[ChannelEnum] = None
     project_id: Optional[int] = None
     gennis_executor_id: Optional[int] = None
+    gennis_reviewer_id: Optional[int] = None
     turon_executor_id: Optional[int] = None
+    turon_reviewer_id: Optional[int] = None
 
-    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "executor_id", "gennis_executor_id", "turon_executor_id", mode="before")
+    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "executor_id", "gennis_executor_id", "gennis_reviewer_id", "turon_executor_id", "turon_reviewer_id", mode="before")
     @classmethod
     def zero_to_none(cls, v):
         return None if v == 0 else v
@@ -328,8 +345,10 @@ class MissionOut(BaseModel):
     is_redirected: bool
     redirected_at: Optional[datetime]
     branch_id: Optional[int]
+    branch_name: Optional[str]
     system_id: Optional[int]
     location_id: Optional[int]
+    location_name: Optional[str]
     start_date: date
     deadline: date
     finish_date: Optional[date]
@@ -352,7 +371,13 @@ class MissionOut(BaseModel):
     approval_status: Optional[str]
     approved_by_id: Optional[int]
     gennis_executor_id: Optional[int]
+    gennis_executor_name: Optional[str]
+    gennis_reviewer_id: Optional[int]
+    gennis_reviewer_name: Optional[str]
     turon_executor_id: Optional[int]
+    turon_executor_name: Optional[str]
+    turon_reviewer_id: Optional[int]
+    turon_reviewer_name: Optional[str]
     creator: Optional[UserOut] = None
     executor: Optional[UserOut] = None
     reviewer: Optional[UserOut] = None
@@ -412,6 +437,7 @@ class MissionCommentOut(BaseModel):
     id: int
     mission_id: int
     user_id: int
+    user: Optional["UserOut"] = None
     text: str
     attachment: Optional[str]
     created_at: datetime

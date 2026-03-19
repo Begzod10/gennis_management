@@ -3,7 +3,7 @@ Read-only SQLAlchemy models mapped to the Turon school (Django) database.
 Django auto-generates table names as {app_label}_{model_name_lowercase}.
 Only columns needed for statistics are declared.
 """
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, ForeignKey, Table, Text
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, Table, Text
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -323,6 +323,7 @@ class TuronMission(TuronBase):
     creator_name = Column(String(255), nullable=True)
     executor_id = Column(BigInteger, ForeignKey("user_customuser.id"))
     reviewer_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    reviewer_name = Column(String(255), nullable=True)
     branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
     start_date = Column(Date)
     deadline = Column(Date)
@@ -335,8 +336,58 @@ class TuronMission(TuronBase):
     max_penalty = Column(Integer, default=10)
     delay_days = Column(Integer, default=0)
     final_sc = Column(Integer, default=0)
+    is_redirected = Column(Boolean, default=False)
     is_recurring = Column(Boolean, default=False)
+    repeat_every = Column(Integer, default=1)
     created_at = Column(Date)
+    updated_at = Column(Date)
+
+
+# ── Mission sub-records ───────────────────────────────────────────────────────
+
+class TuronMissionSubtask(TuronBase):
+    __tablename__ = "tasks_missionsubtask"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(BigInteger, ForeignKey("tasks_mission.id"))
+    title = Column(String(255))
+    is_done = Column(Boolean, default=False)
+    order = Column(Integer, default=0)
+    creator_name = Column(String(255), nullable=True)
+
+
+class TuronMissionAttachment(TuronBase):
+    __tablename__ = "tasks_missionattachment"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(BigInteger, ForeignKey("tasks_mission.id"))
+    file = Column(String(500))
+    note = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime)
+    creator_name = Column(String(255), nullable=True)
+
+
+class TuronMissionComment(TuronBase):
+    __tablename__ = "tasks_missioncomment"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(BigInteger, ForeignKey("tasks_mission.id"))
+    user_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    text = Column(Text)
+    attachment = Column(String(500), nullable=True)
+    created_at = Column(DateTime)
+    creator_name = Column(String(255), nullable=True)
+
+
+class TuronMissionProof(TuronBase):
+    __tablename__ = "tasks_missionproof"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(BigInteger, ForeignKey("tasks_mission.id"))
+    file = Column(String(500))
+    comment = Column(String(255), nullable=True)
+    created_at = Column(DateTime)
+    creator_name = Column(String(255), nullable=True)
 
 
 # ── Overheads ─────────────────────────────────────────────────────────────────

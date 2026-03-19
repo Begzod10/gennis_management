@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 from ...database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
 from ...models import Mission, Tag, User, ProjectMember, Branch, Project
 from ...schemas import (
     MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
     MissionApprove,
 )
-from ...external_models.gennis import GennisMission, Users as GennisUsers, Staff as GennisStaff, GennisProfessions
+from ...external_models.gennis import GennisMission, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
 from ...external_models.turon import TuronMission, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
 from pydantic import BaseModel
 
@@ -30,6 +30,23 @@ PROJECT_SCOPED_ROLES = {"team_lead", "project_manager"}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+class MissionExternalSync(BaseModel):
+    """Payload sent by Gennis/Turon when they update a management-originated mission."""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    status: Optional[str] = None
+    deadline: Optional[date] = None
+    finish_date: Optional[date] = None
+    delay_days: Optional[int] = None
+    final_sc: Optional[int] = None
+    kpi_weight: Optional[int] = None
+    penalty_per_day: Optional[int] = None
+    early_bonus_per_day: Optional[int] = None
+    max_bonus: Optional[int] = None
+    max_penalty: Optional[int] = None
+
 
 class ExternalMissionOut(BaseModel):
     id: int
@@ -69,6 +86,8 @@ def _validate_role_assignment(
     db: Session,
 ):
     """Raise 403 if the creator is not allowed to assign to executor."""
+    if creator.role in OWNER_ROLES:
+        return  # owner can assign to anyone
     if channel == "service_request":
         return  # cross-dept allowed
 
@@ -131,6 +150,31 @@ def _check_owner_permission(creator: User, project_id: Optional[int], db: Sessio
 
 # ── Director auto-fill ────────────────────────────────────────────────────────
 
+def _get_location_name(location_id: int, gennis_db: Session) -> Optional[str]:
+    loc = gennis_db.query(GennisLocations).filter(GennisLocations.id == location_id).first()
+    return loc.name if loc else None
+
+
+def _get_gennis_executor_name(executor_id: int, gennis_db: Session) -> Optional[str]:
+    user = gennis_db.query(GennisUsers).filter(GennisUsers.id == executor_id).first()
+    return f"{user.name} {user.surname}".strip() if user else None
+
+
+def _get_turon_executor_name(executor_id: int, turon_db: Session) -> Optional[str]:
+    user = turon_db.query(TuronUser).filter(TuronUser.id == executor_id).first()
+    return f"{user.name} {user.surname}".strip() if user else None
+
+
+def _get_gennis_user_name(user_id: int, gennis_db: Session) -> Optional[str]:
+    user = gennis_db.query(GennisUsers).filter(GennisUsers.id == user_id).first()
+    return f"{user.name} {user.surname}".strip() if user else None
+
+
+def _get_turon_user_name(user_id: int, turon_db: Session) -> Optional[str]:
+    user = turon_db.query(TuronUser).filter(TuronUser.id == user_id).first()
+    return f"{user.name} {user.surname}".strip() if user else None
+
+
 def _find_gennis_manager(location_id: int, gennis_db: Session) -> Optional[int]:
     """Return the Gennis user ID of the active manager-profession staff for a location."""
     row = (
@@ -189,6 +233,8 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
         existing.creator_id = mission.gennis_executor_id
         existing.creator_name = "from office"
         existing.executor_id = mission.gennis_executor_id
+        existing.reviewer_id = mission.gennis_reviewer_id
+        existing.reviewer_name = mission.gennis_reviewer_name
         existing.kpi_weight = mission.kpi_weight
         existing.delay_days = mission.delay_days
         existing.final_sc = mission.final_sc
@@ -205,6 +251,8 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
             creator_id=mission.gennis_executor_id,
             creator_name="from office",
             executor_id=mission.gennis_executor_id,
+            reviewer_id=mission.gennis_reviewer_id,
+            reviewer_name=mission.gennis_reviewer_name,
             kpi_weight=mission.kpi_weight,
             delay_days=mission.delay_days,
             final_sc=mission.final_sc,
@@ -233,9 +281,13 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
         existing.creator_id = mission.turon_executor_id
         existing.creator_name = "from office"
         existing.executor_id = mission.turon_executor_id
+        existing.reviewer_id = mission.turon_reviewer_id
+        existing.reviewer_name = mission.turon_reviewer_name
         existing.kpi_weight = mission.kpi_weight
         existing.delay_days = mission.delay_days
         existing.final_sc = mission.final_sc
+        existing.is_redirected = mission.is_redirected
+        existing.repeat_every = mission.repeat_every
     else:
         record = TuronMission(
             management_id=mission.id,
@@ -249,10 +301,16 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
             creator_id=mission.turon_executor_id,
             creator_name="from office",
             executor_id=mission.turon_executor_id,
+            reviewer_id=mission.turon_reviewer_id,
+            reviewer_name=mission.turon_reviewer_name,
             kpi_weight=mission.kpi_weight,
             delay_days=mission.delay_days,
             final_sc=mission.final_sc,
+            is_redirected=bool(mission.is_redirected),
+            is_recurring=bool(mission.is_recurring),
+            repeat_every=mission.repeat_every or 1,
             created_at=mission.created_at.date() if mission.created_at else None,
+            updated_at=mission.updated_at.date() if mission.updated_at else None,
         )
         turon_db.add(record)
     turon_db.commit()
@@ -295,17 +353,40 @@ def create_mission(
 
     base = data.model_dump(exclude={"tag_ids", "executor_ids"})
 
-    # Auto-fill system_id from branch when not explicitly set
-    if base.get("branch_id") and not base.get("system_id"):
+    # Auto-fill system_id and branch_name from branch when not explicitly set
+    if base.get("branch_id"):
         branch = db.query(Branch).filter(Branch.id == base["branch_id"]).first()
-        if branch and branch.system_model_id:
-            base["system_id"] = branch.system_model_id
+        if branch:
+            if not base.get("system_id") and branch.system_model_id:
+                base["system_id"] = branch.system_model_id
+            base["branch_name"] = branch.name
 
     # Auto-fill executor IDs from branch/location directors when not explicitly set
     if base.get("location_id") and not base.get("gennis_executor_id"):
         base["gennis_executor_id"] = _find_gennis_manager(base["location_id"], gennis_db)
     if base.get("branch_id") and not base.get("turon_executor_id"):
         base["turon_executor_id"] = _find_turon_director(base["branch_id"], turon_db)
+
+    # Lookup external executor/reviewer names and location name
+    if base.get("gennis_executor_id"):
+        base["gennis_executor_name"] = _get_gennis_executor_name(base["gennis_executor_id"], gennis_db)
+    if base.get("turon_executor_id"):
+        base["turon_executor_name"] = _get_turon_executor_name(base["turon_executor_id"], turon_db)
+    if base.get("gennis_reviewer_id"):
+        base["gennis_reviewer_name"] = _get_gennis_user_name(base["gennis_reviewer_id"], gennis_db)
+    if base.get("turon_reviewer_id"):
+        base["turon_reviewer_name"] = _get_turon_user_name(base["turon_reviewer_id"], turon_db)
+    # Fall back to management reviewer name when no external reviewer ID is set
+    if base.get("reviewer_id") and (not base.get("gennis_reviewer_name") or not base.get("turon_reviewer_name")):
+        rev = db.query(User).filter(User.id == base["reviewer_id"]).first()
+        mgmt_rev_name = f"{rev.name} {rev.surname}".strip() if rev else None
+        if mgmt_rev_name:
+            if not base.get("gennis_reviewer_name"):
+                base["gennis_reviewer_name"] = mgmt_rev_name
+            if not base.get("turon_reviewer_name"):
+                base["turon_reviewer_name"] = mgmt_rev_name
+    if base.get("location_id"):
+        base["location_name"] = _get_location_name(base["location_id"], gennis_db)
 
     # Only owners can assign to external directors/managers
     if base.get("gennis_executor_id") or base.get("turon_executor_id"):
@@ -323,12 +404,13 @@ def create_mission(
         mission = Mission(**base, executor_id=executor_id, creator_id=creator_id)
         mission.tags = tags
         db.add(mission)
-        db.commit()
+        db.flush()
         db.refresh(mission)
         _sync_to_gennis(mission, gennis_db)
         _sync_to_turon(mission, turon_db)
         created.append(mission)
 
+    db.commit()
     return created
 
 
@@ -352,11 +434,19 @@ def create_bulk_missions(
 
     base = data.model_dump(exclude={"tag_ids", "executor_ids", "gennis_executor_ids", "turon_executor_ids"})
 
-    # Auto-fill system_id from branch
-    if base.get("branch_id") and not base.get("system_id"):
-        branch = db.query(Branch).filter(Branch.id == base["branch_id"]).first()
-        if branch and branch.system_model_id:
-            base["system_id"] = branch.system_model_id
+    if base.get("gennis_reviewer_id"):
+        base["gennis_reviewer_name"] = _get_gennis_user_name(base["gennis_reviewer_id"], gennis_db)
+    if base.get("turon_reviewer_id"):
+        base["turon_reviewer_name"] = _get_turon_user_name(base["turon_reviewer_id"], turon_db)
+    # Fall back to management reviewer name when no external reviewer ID is set
+    if base.get("reviewer_id") and (not base.get("gennis_reviewer_name") or not base.get("turon_reviewer_name")):
+        rev = db.query(User).filter(User.id == base["reviewer_id"]).first()
+        mgmt_rev_name = f"{rev.name} {rev.surname}".strip() if rev else None
+        if mgmt_rev_name:
+            if not base.get("gennis_reviewer_name"):
+                base["gennis_reviewer_name"] = mgmt_rev_name
+            if not base.get("turon_reviewer_name"):
+                base["turon_reviewer_name"] = mgmt_rev_name
 
     tags = db.query(Tag).filter(Tag.id.in_(data.tag_ids)).all() if data.tag_ids else []
 
@@ -370,30 +460,59 @@ def create_bulk_missions(
         mission = Mission(**base, executor_id=executor_id, creator_id=creator_id)
         mission.tags = tags
         db.add(mission)
-        db.commit()
+        db.flush()
         db.refresh(mission)
         _sync_to_gennis(mission, gennis_db)
         _sync_to_turon(mission, turon_db)
         created.append(mission)
 
-    for gid in data.gennis_executor_ids:
-        mission = Mission(**base, executor_id=creator_id, creator_id=creator_id, gennis_executor_id=gid, turon_executor_id=None)
+    for item in data.gennis_executor_ids:
+        gname = _get_gennis_executor_name(item.id, gennis_db)
+        mission = Mission(
+            **{**base,
+               "executor_id": creator_id,
+               "creator_id": creator_id,
+               "gennis_executor_id": item.id,
+               "gennis_executor_name": gname,
+               "location_id": item.location_id,
+               "location_name": item.location_name,
+               "turon_executor_id": None,
+               "turon_executor_name": None,
+               "branch_id": None,
+               "branch_name": None,
+            }
+        )
         mission.tags = tags
         db.add(mission)
-        db.commit()
+        db.flush()
         db.refresh(mission)
         _sync_to_gennis(mission, gennis_db)
         created.append(mission)
 
-    for tid in data.turon_executor_ids:
-        mission = Mission(**base, executor_id=creator_id, creator_id=creator_id, turon_executor_id=tid, gennis_executor_id=None)
+    for item in data.turon_executor_ids:
+        tname = _get_turon_executor_name(item.id, turon_db)
+        mission = Mission(
+            **{**base,
+               "executor_id": creator_id,
+               "creator_id": creator_id,
+               "turon_executor_id": item.id,
+               "turon_executor_name": tname,
+               "branch_id": item.branch_id,
+               "branch_name": item.branch_name,
+               "gennis_executor_id": None,
+               "gennis_executor_name": None,
+               "location_id": None,
+               "location_name": None,
+            }
+        )
         mission.tags = tags
         db.add(mission)
-        db.commit()
+        db.flush()
         db.refresh(mission)
         _sync_to_turon(mission, turon_db)
         created.append(mission)
 
+    db.commit()
     return created
 
 
@@ -404,6 +523,7 @@ def list_missions(
     creator_id: Optional[int] = Query(None),
     executor_id: Optional[int] = Query(None),
     branch_id: Optional[int] = Query(None),
+    location_id: Optional[int] = Query(None),
     channel: Optional[str] = Query(None),
     project_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
@@ -419,6 +539,8 @@ def list_missions(
         q = q.filter(Mission.executor_id == executor_id)
     if branch_id:
         q = q.filter(Mission.branch_id == branch_id)
+    if location_id:
+        q = q.filter(Mission.location_id == location_id)
     if channel:
         q = q.filter(Mission.channel == channel)
     if project_id:
@@ -454,17 +576,41 @@ def update_mission(
         mission.calculate_delay_days()
         mission.final_sc = mission.final_score()
 
-    # Auto-fill system_id from branch if branch changed
-    if "branch_id" in payload and not mission.system_id:
+    # Auto-fill system_id and branch_name from branch if branch changed
+    if "branch_id" in payload:
         branch = db.query(Branch).filter(Branch.id == mission.branch_id).first()
-        if branch and branch.system_model_id:
-            mission.system_id = branch.system_model_id
+        if branch:
+            if not mission.system_id and branch.system_model_id:
+                mission.system_id = branch.system_model_id
+            mission.branch_name = branch.name
 
     # Auto-fill executor IDs from location/branch if changed and not explicitly set
     if "location_id" in payload and "gennis_executor_id" not in payload:
         mission.gennis_executor_id = _find_gennis_manager(mission.location_id, gennis_db)
     if "branch_id" in payload and "turon_executor_id" not in payload:
         mission.turon_executor_id = _find_turon_director(mission.branch_id, turon_db)
+
+    # Refresh executor/reviewer names and location name whenever IDs change
+    if "gennis_executor_id" in payload or "location_id" in payload:
+        mission.gennis_executor_name = _get_gennis_executor_name(mission.gennis_executor_id, gennis_db) if mission.gennis_executor_id else None
+    if "turon_executor_id" in payload or "branch_id" in payload:
+        mission.turon_executor_name = _get_turon_executor_name(mission.turon_executor_id, turon_db) if mission.turon_executor_id else None
+    if "gennis_reviewer_id" in payload:
+        mission.gennis_reviewer_name = _get_gennis_user_name(mission.gennis_reviewer_id, gennis_db) if mission.gennis_reviewer_id else None
+    if "turon_reviewer_id" in payload:
+        mission.turon_reviewer_name = _get_turon_user_name(mission.turon_reviewer_id, turon_db) if mission.turon_reviewer_id else None
+    if "location_id" in payload:
+        mission.location_name = _get_location_name(mission.location_id, gennis_db) if mission.location_id else None
+
+    # Fall back to management reviewer name when no external reviewer name is set
+    if "reviewer_id" in payload and mission.reviewer_id:
+        rev = db.query(User).filter(User.id == mission.reviewer_id).first()
+        mgmt_rev_name = f"{rev.name} {rev.surname}".strip() if rev else None
+        if mgmt_rev_name:
+            if not mission.gennis_reviewer_name:
+                mission.gennis_reviewer_name = mgmt_rev_name
+            if not mission.turon_reviewer_name:
+                mission.turon_reviewer_name = mgmt_rev_name
 
     db.commit()
     db.refresh(mission)
@@ -568,6 +714,33 @@ def complete_mission(
     _sync_to_turon(mission, turon_db)
 
     return mission
+
+
+# ── Reverse sync endpoint (called by Gennis / Turon) ─────────────────────────
+
+@router.patch("/sync/{management_id}", status_code=200)
+def sync_from_external(
+    management_id: int,
+    data: MissionExternalSync,
+    db: Session = Depends(get_db),
+):
+    """
+    Called by Gennis or Turon when they update a mission that originated from management.
+    Only updates the fields present in the payload.
+    """
+    mission = db.query(Mission).filter(
+        Mission.id == management_id,
+        Mission.deleted == False,
+    ).first()
+    if not mission:
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    payload = data.model_dump(exclude_none=True)
+    for field, value in payload.items():
+        setattr(mission, field, value)
+
+    db.commit()
+    return {"ok": True}
 
 
 # ── External missions (read-only from Gennis & Turon DBs) ─────────────────────
