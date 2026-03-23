@@ -372,6 +372,26 @@ class GennisMissionProof(GennisBase):
     creator_name = Column(String(255), nullable=True)
 
 
+class GennisMissionHistory(GennisBase):
+    __tablename__ = "mission_history"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(Integer, ForeignKey("missions.id"))
+    executor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    management_executor_id = Column(BigInteger, nullable=True)
+    management_executor_name = Column(String(255), nullable=True)
+    management_reviewer_id = Column(BigInteger, nullable=True)
+    management_reviewer_name = Column(String(255), nullable=True)
+    turon_executor_id = Column(BigInteger, nullable=True)
+    turon_executor_name = Column(String(255), nullable=True)
+    turon_reviewer_id = Column(BigInteger, nullable=True)
+    turon_reviewer_name = Column(String(255), nullable=True)
+    changed_by_name = Column(String(255), nullable=True)
+    note = Column(String(500), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+
+
 # ── Overheads ─────────────────────────────────────────────────────────────────
 
 class Overhead(GennisBase):

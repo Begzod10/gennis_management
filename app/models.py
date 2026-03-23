@@ -304,6 +304,31 @@ class MissionProof(Base):
     mission = relationship("Mission", back_populates="proofs")
 
 
+class MissionHistory(Base):
+    __tablename__ = "mission_history"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    mission_id = Column(BigInteger, ForeignKey("mission.id"), nullable=False)
+    changed_by_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    executor_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    reviewer_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    gennis_executor_id = Column(Integer, nullable=True)
+    gennis_executor_name = Column(String(255), nullable=True)
+    gennis_reviewer_id = Column(Integer, nullable=True)
+    gennis_reviewer_name = Column(String(255), nullable=True)
+    turon_executor_id = Column(BigInteger, nullable=True)
+    turon_executor_name = Column(String(255), nullable=True)
+    turon_reviewer_id = Column(BigInteger, nullable=True)
+    turon_reviewer_name = Column(String(255), nullable=True)
+    note = Column(String(500), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    mission = relationship("Mission", foreign_keys=[mission_id])
+    changed_by = relationship("User", foreign_keys=[changed_by_id])
+    executor = relationship("User", foreign_keys=[executor_id])
+    reviewer = relationship("User", foreign_keys=[reviewer_id])
+
+
 class Section(Base):
     __tablename__ = "section"
 

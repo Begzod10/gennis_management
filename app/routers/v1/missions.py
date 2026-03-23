@@ -3,13 +3,13 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, date
 from ...database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
-from ...models import Mission, Tag, User, ProjectMember, Branch, Project
+from ...models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project
 from ...schemas import (
     MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
-    MissionApprove,
+    MissionApprove, MissionHistoryOut,
 )
-from ...external_models.gennis import GennisMission, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
-from ...external_models.turon import TuronMission, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
+from ...external_models.gennis import GennisMission, GennisMissionHistory, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
+from ...external_models.turon import TuronMission, TuronMissionHistory, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
 from pydantic import BaseModel
 
 
@@ -69,6 +69,91 @@ class ExternalMissionOut(BaseModel):
     created_at: Optional[str] = None
 
 router = APIRouter(prefix="/missions", tags=["Missions"])
+
+
+def _log_history(mission: Mission, db: Session, changed_by_id: Optional[int] = None, note: Optional[str] = None) -> MissionHistory:
+    entry = MissionHistory(
+        mission_id=mission.id,
+        changed_by_id=changed_by_id,
+        executor_id=mission.executor_id,
+        reviewer_id=mission.reviewer_id,
+        gennis_executor_id=mission.gennis_executor_id,
+        gennis_executor_name=mission.gennis_executor_name,
+        gennis_reviewer_id=mission.gennis_reviewer_id,
+        gennis_reviewer_name=mission.gennis_reviewer_name,
+        turon_executor_id=mission.turon_executor_id,
+        turon_executor_name=mission.turon_executor_name,
+        turon_reviewer_id=mission.turon_reviewer_id,
+        turon_reviewer_name=mission.turon_reviewer_name,
+        note=note,
+    )
+    db.add(entry)
+    return entry
+
+
+def _resolve_user_name(db: Session, user_id: Optional[int]) -> Optional[str]:
+    if not user_id:
+        return None
+    u = db.query(User).filter(User.id == user_id).first()
+    return f"{u.name} {u.surname}".strip() if u else None
+
+
+def _sync_history_to_gennis(entry: MissionHistory, mission: Mission, db: Session, gennis_db: Session):
+    gennis_mission = gennis_db.query(GennisMission).filter(GennisMission.management_id == mission.id).first()
+    if not gennis_mission:
+        return
+    kwargs = dict(
+        mission_id=gennis_mission.id,
+        executor_id=entry.gennis_executor_id,
+        reviewer_id=entry.gennis_reviewer_id,
+        management_executor_id=entry.executor_id,
+        management_executor_name=_resolve_user_name(db, entry.executor_id),
+        management_reviewer_id=entry.reviewer_id,
+        management_reviewer_name=_resolve_user_name(db, entry.reviewer_id),
+        turon_executor_id=entry.turon_executor_id,
+        turon_executor_name=entry.turon_executor_name,
+        turon_reviewer_id=entry.turon_reviewer_id,
+        turon_reviewer_name=entry.turon_reviewer_name,
+        changed_by_name=_resolve_user_name(db, entry.changed_by_id),
+        note=entry.note,
+        created_at=entry.created_at,
+    )
+    existing = gennis_db.query(GennisMissionHistory).filter(GennisMissionHistory.management_id == entry.id).first()
+    if existing:
+        for k, v in kwargs.items():
+            setattr(existing, k, v)
+    else:
+        gennis_db.add(GennisMissionHistory(management_id=entry.id, **kwargs))
+    gennis_db.commit()
+
+
+def _sync_history_to_turon(entry: MissionHistory, mission: Mission, db: Session, turon_db: Session):
+    turon_mission = turon_db.query(TuronMission).filter(TuronMission.management_id == mission.id).first()
+    if not turon_mission:
+        return
+    kwargs = dict(
+        mission_id=turon_mission.id,
+        executor_id=entry.turon_executor_id,
+        reviewer_id=entry.turon_reviewer_id,
+        management_executor_id=entry.executor_id,
+        management_executor_name=_resolve_user_name(db, entry.executor_id),
+        management_reviewer_id=entry.reviewer_id,
+        management_reviewer_name=_resolve_user_name(db, entry.reviewer_id),
+        gennis_executor_id=entry.gennis_executor_id,
+        gennis_executor_name=entry.gennis_executor_name,
+        gennis_reviewer_id=entry.gennis_reviewer_id,
+        gennis_reviewer_name=entry.gennis_reviewer_name,
+        changed_by_name=_resolve_user_name(db, entry.changed_by_id),
+        note=entry.note,
+        created_at=entry.created_at,
+    )
+    existing = turon_db.query(TuronMissionHistory).filter(TuronMissionHistory.management_id == entry.id).first()
+    if existing:
+        for k, v in kwargs.items():
+            setattr(existing, k, v)
+    else:
+        turon_db.add(TuronMissionHistory(management_id=entry.id, **kwargs))
+    turon_db.commit()
 
 
 def _get_or_404(db: Session, mission_id: int) -> Mission:
@@ -406,8 +491,12 @@ def create_mission(
         db.add(mission)
         db.flush()
         db.refresh(mission)
+        entry = _log_history(mission, db, changed_by_id=creator_id, note="initial assignment")
+        db.flush()
         _sync_to_gennis(mission, gennis_db)
         _sync_to_turon(mission, turon_db)
+        _sync_history_to_gennis(entry, mission, db, gennis_db)
+        _sync_history_to_turon(entry, mission, db, turon_db)
         created.append(mission)
 
     db.commit()
@@ -557,11 +646,19 @@ def get_mission(mission_id: int, db: Session = Depends(get_db)):
 def update_mission(
     mission_id: int,
     data: MissionUpdate,
+    changed_by_id: Optional[int] = None,
     db: Session = Depends(get_db),
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
     mission = _get_or_404(db, mission_id)
+
+    old_executor = mission.executor_id
+    old_reviewer = mission.reviewer_id
+    old_gennis_executor = mission.gennis_executor_id
+    old_gennis_reviewer = mission.gennis_reviewer_id
+    old_turon_executor = mission.turon_executor_id
+    old_turon_reviewer = mission.turon_reviewer_id
 
     tag_ids = data.tag_ids
     payload = data.model_dump(exclude_none=True, exclude={"tag_ids"})
@@ -615,10 +712,34 @@ def update_mission(
     db.commit()
     db.refresh(mission)
 
+    if (
+        mission.executor_id != old_executor
+        or mission.reviewer_id != old_reviewer
+        or mission.gennis_executor_id != old_gennis_executor
+        or mission.gennis_reviewer_id != old_gennis_reviewer
+        or mission.turon_executor_id != old_turon_executor
+        or mission.turon_reviewer_id != old_turon_reviewer
+    ):
+        entry = _log_history(mission, db, changed_by_id=changed_by_id)
+        db.commit()
+        _sync_history_to_gennis(entry, mission, db, gennis_db)
+        _sync_history_to_turon(entry, mission, db, turon_db)
+
     _sync_to_gennis(mission, gennis_db)
     _sync_to_turon(mission, turon_db)
 
     return mission
+
+
+@router.get("/{mission_id}/history", response_model=List[MissionHistoryOut])
+def get_mission_history(mission_id: int, db: Session = Depends(get_db)):
+    _get_or_404(db, mission_id)
+    return (
+        db.query(MissionHistory)
+        .filter(MissionHistory.mission_id == mission_id)
+        .order_by(MissionHistory.created_at.asc())
+        .all()
+    )
 
 
 @router.delete("/{mission_id}", status_code=204)

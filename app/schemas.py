@@ -616,6 +616,30 @@ class SectionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# --- MissionHistory ---
+class MissionHistoryOut(BaseModel):
+    id: int
+    mission_id: int
+    changed_by_id: Optional[int]
+    executor_id: Optional[int]
+    reviewer_id: Optional[int]
+    gennis_executor_id: Optional[int]
+    gennis_executor_name: Optional[str]
+    gennis_reviewer_id: Optional[int]
+    gennis_reviewer_name: Optional[str]
+    turon_executor_id: Optional[int]
+    turon_executor_name: Optional[str]
+    turon_reviewer_id: Optional[int]
+    turon_reviewer_name: Optional[str]
+    note: Optional[str]
+    created_at: datetime
+    changed_by: Optional[UserOut] = None
+    executor: Optional[UserOut] = None
+    reviewer: Optional[UserOut] = None
+
+    model_config = {"from_attributes": True}
+
+
 # --- Mission Approval ---
 class MissionApprove(BaseModel):
     approval_status: ApprovalStatusEnum

@@ -390,6 +390,26 @@ class TuronMissionProof(TuronBase):
     creator_name = Column(String(255), nullable=True)
 
 
+class TuronMissionHistory(TuronBase):
+    __tablename__ = "tasks_missionhistory"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    mission_id = Column(BigInteger, ForeignKey("tasks_mission.id"))
+    executor_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    reviewer_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    management_executor_id = Column(BigInteger, nullable=True)
+    management_executor_name = Column(String(255), nullable=True)
+    management_reviewer_id = Column(BigInteger, nullable=True)
+    management_reviewer_name = Column(String(255), nullable=True)
+    gennis_executor_id = Column(Integer, nullable=True)
+    gennis_executor_name = Column(String(255), nullable=True)
+    gennis_reviewer_id = Column(Integer, nullable=True)
+    gennis_reviewer_name = Column(String(255), nullable=True)
+    changed_by_name = Column(String(255), nullable=True)
+    note = Column(String(500), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+
+
 # ── Overheads ─────────────────────────────────────────────────────────────────
 
 class Overhead(TuronBase):
