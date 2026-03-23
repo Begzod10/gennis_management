@@ -21,8 +21,11 @@ def create_user(data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=List[UserOut])
-def list_users(db: Session = Depends(get_db)):
-    return db.query(User).filter(User.deleted == False).all()
+def list_users(role: str = None, db: Session = Depends(get_db)):
+    q = db.query(User).filter(User.deleted == False)
+    if role:
+        q = q.filter(User.role == role)
+    return q.all()
 
 
 @router.get("/{user_id}", response_model=UserOut)
