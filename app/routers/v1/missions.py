@@ -302,55 +302,64 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
     # Only sync if we have a valid executor to assign in Gennis
     if not mission.gennis_executor_id:
         return
+    print(f"[gennis sync] mission.id={mission.id} gennis_executor_id={mission.gennis_executor_id}")
     deadline_dt = datetime.combine(mission.deadline, datetime.min.time()) if mission.deadline else None
     existing = (
         gennis_db.query(GennisMission)
         .filter(GennisMission.management_id == mission.id)
         .first()
     )
-    if existing:
-        existing.title = mission.title
-        existing.description = mission.description
-        existing.category = mission.category
-        existing.status = mission.status
-        existing.deadline_datetime = deadline_dt
-        existing.location_id = mission.location_id
-        existing.creator_id = mission.gennis_executor_id
-        existing.creator_name = "from office"
-        existing.executor_id = mission.gennis_executor_id
-        existing.reviewer_id = mission.gennis_reviewer_id
-        existing.reviewer_name = mission.gennis_reviewer_name
-        existing.kpi_weight = mission.kpi_weight
-        existing.delay_days = mission.delay_days
-        existing.final_sc = mission.final_sc
-    else:
-        record = GennisMission(
-            management_id=mission.id,
-            title=mission.title,
-            description=mission.description,
-            category=mission.category,
-            status=mission.status,
-            start_datetime=mission.created_at,
-            deadline_datetime=deadline_dt,
-            location_id=mission.location_id,
-            creator_id=mission.gennis_executor_id,
-            creator_name="from office",
-            executor_id=mission.gennis_executor_id,
-            reviewer_id=mission.gennis_reviewer_id,
-            reviewer_name=mission.gennis_reviewer_name,
-            kpi_weight=mission.kpi_weight,
-            delay_days=mission.delay_days,
-            final_sc=mission.final_sc,
-            created_at=mission.created_at,
-        )
-        gennis_db.add(record)
-    gennis_db.commit()
+    try:
+        if existing:
+            print(f"[gennis sync] updating existing gennis mission id={existing.id}")
+            existing.title = mission.title
+            existing.description = mission.description
+            existing.category = mission.category
+            existing.status = mission.status
+            existing.deadline_datetime = deadline_dt
+            existing.location_id = mission.location_id
+            existing.creator_id = mission.gennis_executor_id
+            existing.creator_name = "from office"
+            existing.executor_id = mission.gennis_executor_id
+            existing.reviewer_id = mission.gennis_reviewer_id
+            existing.reviewer_name = mission.gennis_reviewer_name
+            existing.kpi_weight = mission.kpi_weight
+            existing.delay_days = mission.delay_days
+            existing.final_sc = mission.final_sc
+        else:
+            record = GennisMission(
+                management_id=mission.id,
+                title=mission.title,
+                description=mission.description,
+                category=mission.category,
+                status=mission.status,
+                start_datetime=mission.created_at,
+                deadline_datetime=deadline_dt,
+                location_id=mission.location_id,
+                creator_id=mission.gennis_executor_id,
+                creator_name="from office",
+                executor_id=mission.gennis_executor_id,
+                reviewer_id=mission.gennis_reviewer_id,
+                reviewer_name=mission.gennis_reviewer_name,
+                kpi_weight=mission.kpi_weight,
+                delay_days=mission.delay_days,
+                final_sc=mission.final_sc,
+                created_at=mission.created_at,
+            )
+            gennis_db.add(record)
+            print(f"[gennis sync] creating new gennis mission with management_id={mission.id}")
+        gennis_db.commit()
+        print(f"[gennis sync] commit ok")
+    except Exception as e:
+        gennis_db.rollback()
+        print(f"[gennis sync] ERROR: {e}")
 
 
 def _sync_to_turon(mission: Mission, turon_db: Session):
     # Only sync if we have a valid executor to assign in Turon
     if not mission.turon_executor_id:
         return
+    print(f"[turon sync] mission.id={mission.id} turon_executor_id={mission.turon_executor_id}")
     existing = (
         turon_db.query(TuronMission)
         .filter(TuronMission.management_id == mission.id)
@@ -398,7 +407,13 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
             updated_at=mission.updated_at.date() if mission.updated_at else None,
         )
         turon_db.add(record)
-    turon_db.commit()
+        print(f"[turon sync] creating new turon mission with management_id={mission.id}")
+    try:
+        turon_db.commit()
+        print(f"[turon sync] commit ok")
+    except Exception as e:
+        turon_db.rollback()
+        print(f"[turon sync] ERROR: {e}")
 
 
 def _sync_delete(mission: Mission, gennis_db: Session, turon_db: Session):
