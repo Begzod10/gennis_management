@@ -271,6 +271,7 @@ class MissionAttachment(Base):
     file = Column(String(500), nullable=False)
     uploaded_at = Column(DateTime, server_default=func.now())
     note = Column(String(255), nullable=True)
+    creator_name = Column(String(255), nullable=True)
     deleted = Column(Boolean, nullable=False, default=False)
 
     mission = relationship("Mission", back_populates="attachments")
@@ -281,9 +282,10 @@ class MissionComment(Base):
 
     id = Column(BigInteger, primary_key=True, index=True)
     mission_id = Column(BigInteger, ForeignKey("mission.id"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("user.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
     text = Column(Text, nullable=False)
     attachment = Column(String(500), nullable=True)
+    creator_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     deleted = Column(Boolean, nullable=False, default=False)
 
@@ -298,6 +300,7 @@ class MissionProof(Base):
     mission_id = Column(BigInteger, ForeignKey("mission.id"), nullable=False)
     file = Column(String(500), nullable=False)
     comment = Column(String(255), nullable=True)
+    creator_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     deleted = Column(Boolean, nullable=False, default=False)
 
