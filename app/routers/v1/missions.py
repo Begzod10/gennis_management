@@ -322,7 +322,7 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
         existing.status = mission.status
         existing.deadline_datetime = deadline_dt
         existing.location_id = mission.location_id
-        existing.creator_id = mission.gennis_executor_id
+        existing.creator_id = None
         existing.creator_name = creator_name
         existing.executor_id = mission.gennis_executor_id
         existing.reviewer_id = mission.gennis_reviewer_id
@@ -340,7 +340,7 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
             start_datetime=mission.created_at,
             deadline_datetime=deadline_dt,
             location_id=mission.location_id,
-            creator_id=mission.gennis_executor_id,
+            creator_id=None,
             creator_name=creator_name,
             executor_id=mission.gennis_executor_id,
             reviewer_id=mission.gennis_reviewer_id,
@@ -374,7 +374,7 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
         existing.status = mission.status
         existing.deadline = mission.deadline
         existing.branch_id = mission.branch_id
-        existing.creator_id = mission.turon_executor_id
+        existing.creator_id = None
         existing.creator_name = creator_name
         existing.executor_id = mission.turon_executor_id
         existing.reviewer_id = mission.turon_reviewer_id
@@ -394,7 +394,7 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
             start_date=mission.created_at.date() if mission.created_at else None,
             deadline=mission.deadline,
             branch_id=mission.branch_id,
-            creator_id=mission.turon_executor_id,
+            creator_id=None,
             creator_name=creator_name,
             executor_id=mission.turon_executor_id,
             reviewer_id=mission.turon_reviewer_id,
@@ -740,6 +740,7 @@ def update_mission(
     _sync_to_turon(mission, turon_db)
 
     return mission
+
 
 
 @router.get("/{mission_id}/history", response_model=List[MissionHistoryOut])
