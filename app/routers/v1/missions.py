@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import datetime, date
 from ...database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
@@ -744,6 +744,11 @@ def get_mission_history(mission_id: int, db: Session = Depends(get_db)):
     _get_or_404(db, mission_id)
     return (
         db.query(MissionHistory)
+        .options(
+            joinedload(MissionHistory.changed_by),
+            joinedload(MissionHistory.executor),
+            joinedload(MissionHistory.reviewer),
+        )
         .filter(MissionHistory.mission_id == mission_id)
         .order_by(MissionHistory.created_at.asc())
         .all()
