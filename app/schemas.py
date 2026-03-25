@@ -436,8 +436,9 @@ class MissionCommentUpdate(BaseModel):
 class MissionCommentOut(BaseModel):
     id: int
     mission_id: int
-    user_id: int
+    user_id: Optional[int] = None
     user: Optional["UserOut"] = None
+    creator_name: Optional[str] = None
     text: str
     attachment: Optional[str]
     created_at: datetime
