@@ -56,8 +56,11 @@ class ExternalMissionOut(BaseModel):
     category: Optional[str] = None
     status: str
     creator_id: Optional[int] = None
+    creator_name: Optional[str] = None
     executor_id: Optional[int] = None
+    executor_name: Optional[str] = None
     reviewer_id: Optional[int] = None
+    reviewer_name: Optional[str] = None
     location_id: Optional[int] = None
     branch_id: Optional[int] = None
     deadline: Optional[str] = None
@@ -899,11 +902,24 @@ def list_gennis_missions(
         q = q.filter(GennisMission.executor_id == executor_id)
 
     missions = q.order_by(GennisMission.id.desc()).all()
+
+    user_ids = set()
+    for m in missions:
+        for uid in (m.creator_id, m.executor_id, m.reviewer_id):
+            if uid:
+                user_ids.add(uid)
+    users = {}
+    if user_ids:
+        rows = gennis_db.query(GennisUsers).filter(GennisUsers.id.in_(user_ids)).all()
+        users = {u.id: f"{u.name or ''} {u.surname or ''}".strip() for u in rows}
+
     results = [
         ExternalMissionOut(
             id=m.id, source="gennis", title=m.title, description=m.description,
             category=m.category, status=m.status, creator_id=m.creator_id,
-            executor_id=m.executor_id, reviewer_id=m.reviewer_id,
+            creator_name=users.get(m.creator_id),
+            executor_id=m.executor_id, executor_name=users.get(m.executor_id),
+            reviewer_id=m.reviewer_id, reviewer_name=users.get(m.reviewer_id),
             location_id=m.location_id, branch_id=None,
             deadline=m.deadline_datetime.date().isoformat() if m.deadline_datetime else None,
             finish_date=m.finish_datetime.date().isoformat() if m.finish_datetime else None,
@@ -935,11 +951,24 @@ def list_turon_missions(
         q = q.filter(TuronMission.executor_id == executor_id)
 
     missions = q.order_by(TuronMission.id.desc()).all()
+
+    user_ids = set()
+    for m in missions:
+        for uid in (m.creator_id, m.executor_id, m.reviewer_id):
+            if uid:
+                user_ids.add(uid)
+    users = {}
+    if user_ids:
+        rows = turon_db.query(TuronUser).filter(TuronUser.id.in_(user_ids)).all()
+        users = {u.id: f"{u.name or ''} {u.surname or ''}".strip() for u in rows}
+
     results = [
         ExternalMissionOut(
             id=m.id, source="turon", title=m.title, description=m.description,
             category=m.category, status=m.status, creator_id=m.creator_id,
-            executor_id=m.executor_id, reviewer_id=m.reviewer_id,
+            creator_name=users.get(m.creator_id),
+            executor_id=m.executor_id, executor_name=users.get(m.executor_id),
+            reviewer_id=m.reviewer_id, reviewer_name=users.get(m.reviewer_id),
             location_id=None, branch_id=m.branch_id,
             deadline=m.deadline.isoformat() if m.deadline else None,
             finish_date=m.finish_date.isoformat() if m.finish_date else None,
