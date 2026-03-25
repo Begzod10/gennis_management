@@ -330,6 +330,7 @@ class MissionHistory(Base):
     changed_by = relationship("User", foreign_keys=[changed_by_id])
     executor = relationship("User", foreign_keys=[executor_id])
     reviewer = relationship("User", foreign_keys=[reviewer_id])
+    test = Column(String(255), nullable=True)
 
 
 class Section(Base):
