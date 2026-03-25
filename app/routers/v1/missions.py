@@ -303,6 +303,10 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
     if not mission.gennis_executor_id:
         return
     deadline_dt = datetime.combine(mission.deadline, datetime.min.time()) if mission.deadline else None
+    creator_name = (
+        f"{mission.creator.name} {mission.creator.surname}".strip()
+        if mission.creator else "from office"
+    )
     existing = (
         gennis_db.query(GennisMission)
         .filter(GennisMission.management_id == mission.id)
@@ -316,7 +320,7 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
         existing.deadline_datetime = deadline_dt
         existing.location_id = mission.location_id
         existing.creator_id = mission.gennis_executor_id
-        existing.creator_name = "from office"
+        existing.creator_name = creator_name
         existing.executor_id = mission.gennis_executor_id
         existing.reviewer_id = mission.gennis_reviewer_id
         existing.reviewer_name = mission.gennis_reviewer_name
@@ -334,7 +338,7 @@ def _sync_to_gennis(mission: Mission, gennis_db: Session):
             deadline_datetime=deadline_dt,
             location_id=mission.location_id,
             creator_id=mission.gennis_executor_id,
-            creator_name="from office",
+            creator_name=creator_name,
             executor_id=mission.gennis_executor_id,
             reviewer_id=mission.gennis_reviewer_id,
             reviewer_name=mission.gennis_reviewer_name,
@@ -356,6 +360,10 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
         .filter(TuronMission.management_id == mission.id)
         .first()
     )
+    creator_name = (
+        f"{mission.creator.name} {mission.creator.surname}".strip()
+        if mission.creator else "from office"
+    )
     if existing:
         existing.title = mission.title
         existing.description = mission.description
@@ -364,7 +372,7 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
         existing.deadline = mission.deadline
         existing.branch_id = mission.branch_id
         existing.creator_id = mission.turon_executor_id
-        existing.creator_name = "from office"
+        existing.creator_name = creator_name
         existing.executor_id = mission.turon_executor_id
         existing.reviewer_id = mission.turon_reviewer_id
         existing.reviewer_name = mission.turon_reviewer_name
@@ -384,7 +392,7 @@ def _sync_to_turon(mission: Mission, turon_db: Session):
             deadline=mission.deadline,
             branch_id=mission.branch_id,
             creator_id=mission.turon_executor_id,
-            creator_name="from office",
+            creator_name=creator_name,
             executor_id=mission.turon_executor_id,
             reviewer_id=mission.turon_reviewer_id,
             reviewer_name=mission.turon_reviewer_name,
