@@ -10,6 +10,7 @@ from ...models import Mission, MissionProof, User
 from ...schemas import MissionProofOut
 from ...external_models.gennis import GennisMission, GennisMissionProof
 from ...external_models.turon import TuronMission, TuronMissionProof
+from ...config import settings
 
 router = APIRouter(prefix="/missions/{mission_id}/proofs", tags=["Mission Proofs"])
 
@@ -36,14 +37,15 @@ def _sync_proof_gennis(mission: Mission, proof: MissionProof, gennis_db: Session
             gennis_db.delete(ext)
             gennis_db.commit()
         return
+    file_url = f"{settings.BASE_URL}/{proof.file}" if proof.file else None
     if ext:
-        ext.file_path = proof.file
+        ext.file_path = file_url
         ext.comment = proof.comment
     else:
         ext = GennisMissionProof(
             management_id=proof.id,
             mission_id=ext_mission.id,
-            file_path=proof.file,
+            file_path=file_url,
             comment=proof.comment,
             created_at=proof.created_at,
             creator_name=creator_name,
@@ -64,14 +66,15 @@ def _sync_proof_turon(mission: Mission, proof: MissionProof, turon_db: Session, 
             turon_db.delete(ext)
             turon_db.commit()
         return
+    file_url = f"{settings.BASE_URL}/{proof.file}" if proof.file else None
     if ext:
-        ext.file = proof.file
+        ext.file = file_url
         ext.comment = proof.comment
     else:
         ext = TuronMissionProof(
             management_id=proof.id,
             mission_id=ext_mission.id,
-            file=proof.file,
+            file=file_url,
             comment=proof.comment,
             created_at=proof.created_at,
             creator_name=creator_name,

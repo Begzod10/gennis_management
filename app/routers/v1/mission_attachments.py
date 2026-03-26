@@ -8,6 +8,7 @@ from typing import List, Optional
 from ...database import get_db, get_gennis_write_db, get_turon_write_db
 from ...models import Mission, MissionAttachment, User
 from ...schemas import MissionAttachmentOut
+from ...config import settings
 from ...external_models.gennis import GennisMission, GennisMissionAttachment
 from ...external_models.turon import TuronMission, TuronMissionAttachment
 
@@ -36,14 +37,15 @@ def _sync_attachment_gennis(mission: Mission, attachment: MissionAttachment, gen
             gennis_db.delete(ext)
             gennis_db.commit()
         return
+    file_url = f"{settings.BASE_URL}/{attachment.file}" if attachment.file else None
     if ext:
-        ext.file_path = attachment.file
+        ext.file_path = file_url
         ext.note = attachment.note
     else:
         ext = GennisMissionAttachment(
             management_id=attachment.id,
             mission_id=ext_mission.id,
-            file_path=attachment.file,
+            file_path=file_url,
             note=attachment.note,
             uploaded_at=attachment.uploaded_at,
             creator_name=creator_name,
@@ -64,14 +66,15 @@ def _sync_attachment_turon(mission: Mission, attachment: MissionAttachment, turo
             turon_db.delete(ext)
             turon_db.commit()
         return
+    file_url = f"{settings.BASE_URL}/{attachment.file}" if attachment.file else None
     if ext:
-        ext.file = attachment.file
+        ext.file = file_url
         ext.note = attachment.note
     else:
         ext = TuronMissionAttachment(
             management_id=attachment.id,
             mission_id=ext_mission.id,
-            file=attachment.file,
+            file=file_url,
             note=attachment.note,
             uploaded_at=attachment.uploaded_at,
             creator_name=creator_name,

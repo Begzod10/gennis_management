@@ -8,6 +8,7 @@ from typing import List, Optional
 from ...database import get_db, get_gennis_write_db, get_turon_write_db
 from ...models import Mission, MissionComment, User
 from ...schemas import MissionCommentOut
+from ...config import settings
 from ...external_models.gennis import GennisMission, GennisMissionComment
 from ...external_models.turon import TuronMission, TuronMissionComment
 
@@ -36,9 +37,10 @@ def _sync_comment_gennis(mission: Mission, comment: MissionComment, gennis_db: S
             gennis_db.delete(ext)
             gennis_db.commit()
         return
+    attachment_url = f"{settings.BASE_URL}/{comment.attachment}" if comment.attachment else None
     if ext:
         ext.text = comment.text
-        ext.attachment_path = comment.attachment
+        ext.attachment_path = attachment_url
         ext.creator_name = creator_name
     else:
         ext = GennisMissionComment(
@@ -46,7 +48,7 @@ def _sync_comment_gennis(mission: Mission, comment: MissionComment, gennis_db: S
             mission_id=ext_mission.id,
             user_id=None,
             text=comment.text,
-            attachment_path=comment.attachment,
+            attachment_path=attachment_url,
             created_at=comment.created_at,
             creator_name=creator_name,
         )
@@ -66,9 +68,10 @@ def _sync_comment_turon(mission: Mission, comment: MissionComment, turon_db: Ses
             turon_db.delete(ext)
             turon_db.commit()
         return
+    attachment_url = f"{settings.BASE_URL}/{comment.attachment}" if comment.attachment else None
     if ext:
         ext.text = comment.text
-        ext.attachment = comment.attachment
+        ext.attachment = attachment_url
         ext.creator_name = creator_name
     else:
         ext = TuronMissionComment(
@@ -76,7 +79,7 @@ def _sync_comment_turon(mission: Mission, comment: MissionComment, turon_db: Ses
             mission_id=ext_mission.id,
             user_id=None,
             text=comment.text,
-            attachment=comment.attachment,
+            attachment=attachment_url,
             created_at=comment.created_at,
             creator_name=creator_name,
         )
