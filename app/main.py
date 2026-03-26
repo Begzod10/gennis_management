@@ -66,7 +66,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "100.81.196.80:3000"],
+    allow_origins=["http://localhost:3000", "100.81.196.80:3000",
+                    "https://office.gennis.uz", "https://school.gennis.uz",
+                    "https://admin.gennis.uz"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
