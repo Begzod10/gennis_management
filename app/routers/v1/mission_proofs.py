@@ -18,6 +18,14 @@ UPLOAD_DIR = "uploads/mission_proofs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+def _file_url(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return path
+    if path.startswith(("http://", "https://")):
+        return path
+    return f"{settings.BASE_URL}/{path}"
+
+
 def _get_mission(db: Session, mission_id: int) -> Mission:
     mission = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
     if not mission:
@@ -107,15 +115,23 @@ async def upload_proof(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_proof_gennis(mission, proof, gennis_db, creator_name=creator_name)
     _sync_proof_turon(mission, proof, turon_db, creator_name=creator_name)
-    return proof
+    out = MissionProofOut.model_validate(proof)
+    out.file = _file_url(out.file)
+    return out
 
 
 @router.get("/", response_model=List[MissionProofOut])
 def list_proofs(mission_id: int, db: Session = Depends(get_db)):
     _get_mission(db, mission_id)
-    return db.query(MissionProof).filter(
+    rows = db.query(MissionProof).filter(
         MissionProof.mission_id == mission_id, MissionProof.deleted == False
     ).all()
+    result = []
+    for row in rows:
+        out = MissionProofOut.model_validate(row)
+        out.file = _file_url(out.file)
+        result.append(out)
+    return result
 
 
 @router.patch("/{proof_id}", response_model=MissionProofOut)
@@ -147,7 +163,9 @@ async def update_proof(
     db.refresh(proof)
     _sync_proof_gennis(mission, proof, gennis_db)
     _sync_proof_turon(mission, proof, turon_db)
-    return proof
+    out = MissionProofOut.model_validate(proof)
+    out.file = _file_url(out.file)
+    return out
 
 
 @router.delete("/{proof_id}", status_code=204)

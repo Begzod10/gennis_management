@@ -18,6 +18,14 @@ UPLOAD_DIR = "uploads/mission_attachments"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+def _file_url(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return path
+    if path.startswith(("http://", "https://")):
+        return path
+    return f"{settings.BASE_URL}/{path}"
+
+
 def _get_mission(db: Session, mission_id: int) -> Mission:
     mission = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
     if not mission:
@@ -107,15 +115,23 @@ async def upload_attachment(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_attachment_gennis(mission, attachment, gennis_db, creator_name=creator_name)
     _sync_attachment_turon(mission, attachment, turon_db, creator_name=creator_name)
-    return attachment
+    out = MissionAttachmentOut.model_validate(attachment)
+    out.file = _file_url(out.file)
+    return out
 
 
 @router.get("/", response_model=List[MissionAttachmentOut])
 def list_attachments(mission_id: int, db: Session = Depends(get_db)):
     _get_mission(db, mission_id)
-    return db.query(MissionAttachment).filter(
+    rows = db.query(MissionAttachment).filter(
         MissionAttachment.mission_id == mission_id, MissionAttachment.deleted == False
     ).all()
+    result = []
+    for row in rows:
+        out = MissionAttachmentOut.model_validate(row)
+        out.file = _file_url(out.file)
+        result.append(out)
+    return result
 
 
 @router.patch("/{attachment_id}", response_model=MissionAttachmentOut)
@@ -147,7 +163,9 @@ async def update_attachment(
     db.refresh(attachment)
     _sync_attachment_gennis(mission, attachment, gennis_db)
     _sync_attachment_turon(mission, attachment, turon_db)
-    return attachment
+    out = MissionAttachmentOut.model_validate(attachment)
+    out.file = _file_url(out.file)
+    return out
 
 
 @router.delete("/{attachment_id}", status_code=204)

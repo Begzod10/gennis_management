@@ -1,5 +1,4 @@
 from pydantic import BaseModel, field_validator
-from .config import settings as _settings
 from datetime import date, datetime
 from typing import Optional, List
 from enum import Enum
@@ -423,13 +422,6 @@ class MissionAttachmentOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_validator("file", mode="before")
-    @classmethod
-    def make_file_url(cls, v):
-        if v and not str(v).startswith(("http://", "https://")):
-            return f"{_settings.BASE_URL}/{v}"
-        return v
-
 
 # --- MissionComment ---
 class MissionCommentCreate(BaseModel):
@@ -453,13 +445,6 @@ class MissionCommentOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_validator("attachment", mode="before")
-    @classmethod
-    def make_attachment_url(cls, v):
-        if v and not str(v).startswith(("http://", "https://")):
-            return f"{_settings.BASE_URL}/{v}"
-        return v
-
 
 # --- MissionProof ---
 class MissionProofUpdate(BaseModel):
@@ -475,13 +460,6 @@ class MissionProofOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-    @field_validator("file", mode="before")
-    @classmethod
-    def make_file_url(cls, v):
-        if v and not str(v).startswith(("http://", "https://")):
-            return f"{_settings.BASE_URL}/{v}"
-        return v
 
 
 # --- Dividend ---

@@ -18,6 +18,14 @@ UPLOAD_DIR = "uploads/mission_comments"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+def _attachment_url(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return path
+    if path.startswith(("http://", "https://")):
+        return path
+    return f"{settings.BASE_URL}/{path}"
+
+
 def _get_mission(db: Session, mission_id: int) -> Mission:
     mission = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
     if not mission:
@@ -119,17 +127,25 @@ async def create_comment(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_comment_gennis(mission, comment, gennis_db, creator_name=creator_name)
     _sync_comment_turon(mission, comment, turon_db, creator_name=creator_name)
-    return comment
+    out = MissionCommentOut.model_validate(comment)
+    out.attachment = _attachment_url(out.attachment)
+    return out
 
 
 @router.get("/", response_model=List[MissionCommentOut])
 def list_comments(mission_id: int, db: Session = Depends(get_db)):
     _get_mission(db, mission_id)
-    return db.query(MissionComment).options(
+    rows = db.query(MissionComment).options(
         joinedload(MissionComment.user)
     ).filter(
         MissionComment.mission_id == mission_id, MissionComment.deleted == False
     ).order_by(MissionComment.created_at).all()
+    result = []
+    for row in rows:
+        out = MissionCommentOut.model_validate(row)
+        out.attachment = _attachment_url(out.attachment)
+        result.append(out)
+    return result
 
 
 @router.patch("/{comment_id}", response_model=MissionCommentOut)
@@ -163,7 +179,9 @@ async def update_comment(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_comment_gennis(mission, comment, gennis_db, creator_name=creator_name)
     _sync_comment_turon(mission, comment, turon_db, creator_name=creator_name)
-    return comment
+    out = MissionCommentOut.model_validate(comment)
+    out.attachment = _attachment_url(out.attachment)
+    return out
 
 
 @router.delete("/{comment_id}", status_code=204)
