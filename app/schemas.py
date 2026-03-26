@@ -1,5 +1,5 @@
-from pydantic import BaseModel, field_validator, model_validator
-from app.config import settings as _settings
+from pydantic import BaseModel, field_validator
+from .config import settings as _settings
 from datetime import date, datetime
 from typing import Optional, List
 from enum import Enum
