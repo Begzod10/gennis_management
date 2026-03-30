@@ -46,6 +46,8 @@ class User(Base):
     job = relationship("Job", back_populates="users")
     salary_months = relationship("SalaryMonth", back_populates="user")
     salary_days = relationship("SalaryDay", back_populates="user")
+    project_memberships = relationship("ProjectMember", foreign_keys="ProjectMember.user_id", back_populates="user")
+    section_memberships = relationship("SectionMember", foreign_keys="SectionMember.user_id", back_populates="user")
 
     @property
     def is_locked(self) -> bool:
@@ -112,7 +114,7 @@ class ProjectMember(Base):
     __table_args__ = (UniqueConstraint("project_id", "user_id"),)
 
     project = relationship("Project", back_populates="members")
-    user = relationship("User")
+    user = relationship("User", back_populates="project_memberships")
 
 
 # ── Mission module ────────────────────────────────────────────────────────────
@@ -330,7 +332,6 @@ class MissionHistory(Base):
     changed_by = relationship("User", foreign_keys=[changed_by_id])
     executor = relationship("User", foreign_keys=[executor_id])
     reviewer = relationship("User", foreign_keys=[reviewer_id])
-    test = Column(String(255), nullable=True)
 
 
 class Section(Base):
@@ -356,7 +357,7 @@ class SectionMember(Base):
     __table_args__ = (UniqueConstraint("section_id", "user_id"),)
 
     section = relationship("Section", back_populates="members")
-    user = relationship("User")
+    user = relationship("User", back_populates="section_memberships")
 
 
 class Dividend(Base):

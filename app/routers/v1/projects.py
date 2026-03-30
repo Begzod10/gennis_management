@@ -17,8 +17,10 @@ def _get_project_or_404(db: Session, project_id: int) -> Project:
 
 @router.post("/", response_model=ProjectOut, status_code=201)
 def create_project(data: ProjectCreate, manager_id: int, db: Session = Depends(get_db)):
-    if not db.query(User).filter(User.id == manager_id).first():
+    manager = db.query(User).filter(User.id == manager_id).first()
+    if not manager:
         raise HTTPException(status_code=404, detail="Manager not found")
+    manager.role = "manager"
     project = Project(**data.model_dump(), manager_id=manager_id)
     db.add(project)
     db.commit()
@@ -32,7 +34,7 @@ def list_projects(
     leader_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
-    q = db.query(Project).filter(Project.deleted == False)
+    q = db.query(Project).options(joinedload(Project.manager)).filter(Project.deleted == False)
     if manager_id:
         q = q.filter(Project.manager_id == manager_id)
     if leader_id:
@@ -50,7 +52,15 @@ def list_projects(
 
 @router.get("/{project_id}", response_model=ProjectOut)
 def get_project(project_id: int, db: Session = Depends(get_db)):
-    return _get_project_or_404(db, project_id)
+    project = (
+        db.query(Project)
+        .options(joinedload(Project.manager))
+        .filter(Project.id == project_id, Project.deleted == False)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)

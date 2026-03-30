@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List, Optional
 from datetime import datetime, date
 from ...database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
-from ...models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project
+from ...models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember
 from ...schemas import (
     MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
     MissionApprove, MissionHistoryOut,
@@ -25,9 +25,6 @@ ROLE_CAN_ASSIGN: dict[str, set[str]] = {
     "project_manager":  set(),   # project-scoped check below
     "employee":         {"employee"},  # service_request or self only
 }
-
-PROJECT_SCOPED_ROLES = {"team_lead", "project_manager"}
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -182,30 +179,57 @@ def _validate_role_assignment(
     creator_role = creator.role
     executor_role = executor.role
 
-    allowed = ROLE_CAN_ASSIGN.get(creator_role, set())
-
-    if creator_role in PROJECT_SCOPED_ROLES:
-        # team_lead / project_manager: executor must be a member of the same project
+    if creator_role == "project_manager":
+        # Must provide a project they manage, executor must be its member
         if not project_id:
             raise HTTPException(
                 status_code=403,
-                detail="project_id is required for team_lead/project_manager assignments",
+                detail="project_id is required for project_manager assignments",
             )
-        member = (
-            db.query(ProjectMember)
-            .filter(
-                ProjectMember.project_id == project_id,
-                ProjectMember.user_id == executor.id,
+        project = db.query(Project).filter(
+            Project.id == project_id,
+            Project.manager_id == creator.id,
+            Project.deleted == False,
+        ).first()
+        if not project:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only assign missions within projects you manage",
             )
-            .first()
-        )
+        member = db.query(ProjectMember).filter(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == executor.id,
+        ).first()
         if not member:
             raise HTTPException(
                 status_code=403,
-                detail="Executor is not a member of the specified project",
+                detail="Executor is not a member of your project",
             )
         return
 
+    if creator_role == "team_lead":
+        # Executor must be a member of a section where creator is the leader
+        section = db.query(Section).filter(
+            Section.leader_id == creator.id,
+            Section.deleted == False,
+        ).first()
+        if not section:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not a leader of any section",
+            )
+        member = db.query(SectionMember).filter(
+            SectionMember.section_id == section.id,
+            SectionMember.user_id == executor.id,
+        ).first()
+        if not member:
+            raise HTTPException(
+                status_code=403,
+                detail="Executor is not a member of your section",
+            )
+        return
+
+    allowed = ROLE_CAN_ASSIGN.get(creator_role, set())
     if executor_role not in allowed:
         raise HTTPException(
             status_code=403,
@@ -217,23 +241,13 @@ def _validate_role_assignment(
 
 OWNER_ROLES = {"owner"}
 
-def _check_owner_permission(creator: User, project_id: Optional[int], db: Session):
-    """Only the project owner or a top-level role can assign to external directors/managers."""
-    if project_id:
-        project = db.query(Project).filter(Project.id == project_id, Project.deleted == False).first()
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        if creator.id != project.manager_id and creator.role not in OWNER_ROLES:
-            raise HTTPException(
-                status_code=403,
-                detail="Only the project owner can assign missions to external directors/managers",
-            )
-    else:
-        if creator.role not in OWNER_ROLES:
-            raise HTTPException(
-                status_code=403,
-                detail="Only super_admin or director can assign missions to external directors/managers",
-            )
+def _check_owner_permission(creator: User, db: Session):
+    """Only the owner role can assign to Gennis/Turon executors or project members."""
+    if creator.role not in OWNER_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Only owner can assign missions to Gennis/Turon executors or project members",
+        )
 
 
 # ── Director auto-fill ────────────────────────────────────────────────────────
@@ -486,7 +500,7 @@ def create_mission(
 
     # Only owners can assign to external directors/managers
     if base.get("gennis_executor_id") or base.get("turon_executor_id"):
-        _check_owner_permission(creator, base.get("project_id"), db)
+        _check_owner_permission(creator, db)
 
     tags = db.query(Tag).filter(Tag.id.in_(data.tag_ids)).all() if data.tag_ids else []
 
@@ -530,7 +544,7 @@ def create_bulk_missions(
     if not data.executor_ids and not data.gennis_executor_ids and not data.turon_executor_ids:
         raise HTTPException(status_code=400, detail="At least one executor ID must be provided")
 
-    _check_owner_permission(creator, data.project_id, db)
+    _check_owner_permission(creator, db)
 
     base = data.model_dump(exclude={"tag_ids", "executor_ids", "gennis_executor_ids", "turon_executor_ids"})
 

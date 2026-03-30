@@ -83,6 +83,28 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserProjectOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class UserSectionOut(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class UserProfileOut(UserOut):
+    projects: List["UserProjectOut"] = []
+    sections: List["UserSectionOut"] = []
+
+    model_config = {"from_attributes": True}
+
+
 # --- SalaryMonth ---
 class SalaryMonthCreate(BaseModel):
     salary: int
@@ -574,6 +596,7 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     manager_id: int
+    manager: Optional["UserOut"] = None
     description: Optional[str]
     deleted: bool
     created_at: datetime
@@ -610,6 +633,7 @@ class SectionOut(BaseModel):
     id: int
     name: str
     leader_id: Optional[int]
+    leader: Optional["UserOut"] = None
     deleted: bool
     created_at: datetime
     members: List[SectionMemberOut] = []

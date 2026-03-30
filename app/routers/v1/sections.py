@@ -17,8 +17,11 @@ def _get_section_or_404(db: Session, section_id: int) -> Section:
 
 @router.post("/", response_model=SectionOut, status_code=201)
 def create_section(data: SectionCreate, db: Session = Depends(get_db)):
-    if data.leader_id and not db.query(User).filter(User.id == data.leader_id).first():
-        raise HTTPException(status_code=404, detail="Leader not found")
+    if data.leader_id:
+        leader = db.query(User).filter(User.id == data.leader_id).first()
+        if not leader:
+            raise HTTPException(status_code=404, detail="Leader not found")
+        leader.role = "manager"
     section = Section(**data.model_dump())
     db.add(section)
     db.commit()
@@ -31,7 +34,7 @@ def list_sections(
     leader_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
-    q = db.query(Section).filter(Section.deleted == False)
+    q = db.query(Section).options(joinedload(Section.leader)).filter(Section.deleted == False)
     if leader_id:
         q = q.filter(Section.leader_id == leader_id)
     return q.order_by(Section.created_at.desc()).all()
@@ -39,7 +42,15 @@ def list_sections(
 
 @router.get("/{section_id}", response_model=SectionOut)
 def get_section(section_id: int, db: Session = Depends(get_db)):
-    return _get_section_or_404(db, section_id)
+    section = (
+        db.query(Section)
+        .options(joinedload(Section.leader))
+        .filter(Section.id == section_id, Section.deleted == False)
+        .first()
+    )
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+    return section
 
 
 @router.patch("/{section_id}", response_model=SectionOut)
