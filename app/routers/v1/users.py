@@ -5,6 +5,7 @@ from ...database import get_db
 from sqlalchemy.orm import joinedload
 from ...models import User, Section, Project, ProjectMember, SectionMember
 from ...schemas import UserCreate, UserUpdate, UserOut, UserProfileOut, UserProjectOut, UserSectionOut
+from app.core.security import get_password_hash
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -14,6 +15,8 @@ def create_user(data: UserCreate, db: Session = Depends(get_db)):
     payload = data.model_dump()
     if not payload.get("job_id"):
         payload["job_id"] = None
+    if payload.get("password"):
+        payload["hashed_password"] = get_password_hash(payload["password"])
     user = User(**payload)
     db.add(user)
     db.commit()

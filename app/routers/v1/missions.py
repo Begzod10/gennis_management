@@ -229,6 +229,40 @@ def _validate_role_assignment(
             )
         return
 
+    if creator_role == "manager":
+        # Check if executor is a member of any project the creator manages
+        in_project = (
+            db.query(ProjectMember)
+            .join(Project, Project.id == ProjectMember.project_id)
+            .filter(
+                Project.manager_id == creator.id,
+                Project.deleted == False,
+                ProjectMember.user_id == executor.id,
+            )
+            .first()
+        )
+        if in_project:
+            return
+
+        # Check if executor is a member of any section the creator leads
+        in_section = (
+            db.query(SectionMember)
+            .join(Section, Section.id == SectionMember.section_id)
+            .filter(
+                Section.leader_id == creator.id,
+                Section.deleted == False,
+                SectionMember.user_id == executor.id,
+            )
+            .first()
+        )
+        if in_section:
+            return
+
+        raise HTTPException(
+            status_code=403,
+            detail="Executor is not a member of your project or section",
+        )
+
     allowed = ROLE_CAN_ASSIGN.get(creator_role, set())
     if executor_role not in allowed:
         raise HTTPException(
@@ -636,6 +670,7 @@ def list_missions(
     category: Optional[str] = Query(None),
     creator_id: Optional[int] = Query(None),
     executor_id: Optional[int] = Query(None),
+    reviewer_id: Optional[int] = Query(None),
     branch_id: Optional[int] = Query(None),
     location_id: Optional[int] = Query(None),
     channel: Optional[str] = Query(None),
@@ -651,6 +686,8 @@ def list_missions(
         q = q.filter(Mission.creator_id == creator_id)
     if executor_id:
         q = q.filter(Mission.executor_id == executor_id)
+    if reviewer_id:
+        q = q.filter(Mission.reviewer_id == reviewer_id)
     if branch_id:
         q = q.filter(Mission.branch_id == branch_id)
     if location_id:
@@ -827,10 +864,46 @@ def redirect_mission(
     new_executor_id: int,
     redirected_by_id: int,
     db: Session = Depends(get_db),
+    gennis_db: Session = Depends(get_gennis_write_db),
+    turon_db: Session = Depends(get_turon_write_db),
 ):
     mission = _get_or_404(db, mission_id)
-    if not db.query(User).filter(User.id == new_executor_id).first():
+
+    new_executor = db.query(User).filter(User.id == new_executor_id).first()
+    if not new_executor:
         raise HTTPException(status_code=404, detail="New executor not found")
+
+    redirected_by = db.query(User).filter(User.id == redirected_by_id).first()
+    if not redirected_by:
+        raise HTTPException(status_code=404, detail="Redirected by user not found")
+
+    # Managers can only redirect to members of their projects or sections
+    if redirected_by.role == "manager":
+        in_project = (
+            db.query(ProjectMember)
+            .join(Project, Project.id == ProjectMember.project_id)
+            .filter(
+                Project.manager_id == redirected_by.id,
+                Project.deleted == False,
+                ProjectMember.user_id == new_executor_id,
+            )
+            .first()
+        )
+        in_section = (
+            db.query(SectionMember)
+            .join(Section, Section.id == SectionMember.section_id)
+            .filter(
+                Section.leader_id == redirected_by.id,
+                Section.deleted == False,
+                SectionMember.user_id == new_executor_id,
+            )
+            .first()
+        )
+        if not in_project and not in_section:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only redirect missions to members of your project or section",
+            )
 
     mission.original_executor_id = mission.executor_id
     mission.executor_id = new_executor_id
@@ -838,6 +911,13 @@ def redirect_mission(
     mission.is_redirected = True
     mission.redirected_at = datetime.utcnow()
 
+    db.flush()
+    entry = _log_history(mission, db, changed_by_id=redirected_by_id, note=f"redirected to {new_executor.name} {new_executor.surname}".strip())
+    db.flush()
+    _sync_to_gennis(mission, gennis_db)
+    _sync_to_turon(mission, turon_db)
+    _sync_history_to_gennis(entry, mission, db, gennis_db)
+    _sync_history_to_turon(entry, mission, db, turon_db)
     db.commit()
     db.refresh(mission)
     return mission
