@@ -185,6 +185,7 @@ class Mission(Base):
 
     channel = Column(String(30), default="line_management", nullable=False)
     project_id = Column(BigInteger, ForeignKey("project.id"), nullable=True)
+    section_id = Column(BigInteger, ForeignKey("section.id"), nullable=True)
     approval_status = Column(String(20), nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
     gennis_executor_id = Column(Integer, nullable=True)

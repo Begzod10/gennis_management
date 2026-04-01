@@ -168,6 +168,7 @@ def _validate_role_assignment(
     executor: User,
     channel: str,
     project_id: Optional[int],
+    section_id: Optional[int],
     db: Session,
 ):
     """Raise 403 if the creator is not allowed to assign to executor."""
@@ -179,89 +180,53 @@ def _validate_role_assignment(
     creator_role = creator.role
     executor_role = executor.role
 
-    if creator_role == "project_manager":
-        # Must provide a project they manage, executor must be its member
-        if not project_id:
-            raise HTTPException(
-                status_code=403,
-                detail="project_id is required for project_manager assignments",
-            )
-        project = db.query(Project).filter(
-            Project.id == project_id,
-            Project.manager_id == creator.id,
-            Project.deleted == False,
-        ).first()
-        if not project:
-            raise HTTPException(
-                status_code=403,
-                detail="You can only assign missions within projects you manage",
-            )
-        member = db.query(ProjectMember).filter(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == executor.id,
-        ).first()
-        if not member:
-            raise HTTPException(
-                status_code=403,
-                detail="Executor is not a member of your project",
-            )
-        return
-
-    if creator_role == "team_lead":
-        # Executor must be a member of a section where creator is the leader
-        section = db.query(Section).filter(
-            Section.leader_id == creator.id,
-            Section.deleted == False,
-        ).first()
-        if not section:
-            raise HTTPException(
-                status_code=403,
-                detail="You are not a leader of any section",
-            )
-        member = db.query(SectionMember).filter(
-            SectionMember.section_id == section.id,
-            SectionMember.user_id == executor.id,
-        ).first()
-        if not member:
-            raise HTTPException(
-                status_code=403,
-                detail="Executor is not a member of your section",
-            )
-        return
-
     if creator_role == "manager":
-        # Check if executor is a member of any project the creator manages
-        in_project = (
-            db.query(ProjectMember)
-            .join(Project, Project.id == ProjectMember.project_id)
-            .filter(
+        if not project_id and not section_id:
+            raise HTTPException(
+                status_code=403,
+                detail="project_id or section_id is required for manager assignments",
+            )
+        if project_id:
+            project = db.query(Project).filter(
+                Project.id == project_id,
                 Project.manager_id == creator.id,
                 Project.deleted == False,
+            ).first()
+            if not project:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You can only assign missions within projects you manage",
+                )
+            member = db.query(ProjectMember).filter(
+                ProjectMember.project_id == project_id,
                 ProjectMember.user_id == executor.id,
-            )
-            .first()
-        )
-        if in_project:
-            return
-
-        # Check if executor is a member of any section the creator leads
-        in_section = (
-            db.query(SectionMember)
-            .join(Section, Section.id == SectionMember.section_id)
-            .filter(
+            ).first()
+            if not member:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Executor is not a member of your project",
+                )
+        else:
+            section = db.query(Section).filter(
+                Section.id == section_id,
                 Section.leader_id == creator.id,
                 Section.deleted == False,
+            ).first()
+            if not section:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You can only assign missions within sections you lead",
+                )
+            member = db.query(SectionMember).filter(
+                SectionMember.section_id == section_id,
                 SectionMember.user_id == executor.id,
-            )
-            .first()
-        )
-        if in_section:
-            return
-
-        raise HTTPException(
-            status_code=403,
-            detail="Executor is not a member of your project or section",
-        )
+            ).first()
+            if not member:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Executor is not a member of your section",
+                )
+        return
 
     allowed = ROLE_CAN_ASSIGN.get(creator_role, set())
     if executor_role not in allowed:
@@ -505,11 +470,12 @@ def create_mission(
                 base["system_id"] = branch.system_model_id
             base["branch_name"] = branch.name
 
-    # Auto-fill executor IDs from branch/location directors when not explicitly set
-    if base.get("location_id") and not base.get("gennis_executor_id"):
-        base["gennis_executor_id"] = _find_gennis_manager(base["location_id"], gennis_db)
-    if base.get("branch_id") and not base.get("turon_executor_id"):
-        base["turon_executor_id"] = _find_turon_director(base["branch_id"], turon_db)
+    # Auto-fill executor IDs from branch/location directors only for owners
+    if creator.role in OWNER_ROLES:
+        if base.get("location_id") and not base.get("gennis_executor_id"):
+            base["gennis_executor_id"] = _find_gennis_manager(base["location_id"], gennis_db)
+        if base.get("branch_id") and not base.get("turon_executor_id"):
+            base["turon_executor_id"] = _find_turon_director(base["branch_id"], turon_db)
 
     # Lookup external executor/reviewer names and location name
     if base.get("gennis_executor_id"):
@@ -543,7 +509,7 @@ def create_mission(
         executor = db.query(User).filter(User.id == executor_id).first()
         if not executor:
             raise HTTPException(status_code=404, detail=f"Executor {executor_id} not found")
-        _validate_role_assignment(creator, executor, data.channel.value, data.project_id, db)
+        _validate_role_assignment(creator, executor, data.channel.value, data.project_id, data.section_id, db)
 
         mission = Mission(**base, executor_id=executor_id, creator_id=creator_id)
         mission.tags = tags
@@ -604,7 +570,7 @@ def create_bulk_missions(
         executor = db.query(User).filter(User.id == executor_id).first()
         if not executor:
             raise HTTPException(status_code=404, detail=f"Executor {executor_id} not found")
-        _validate_role_assignment(creator, executor, data.channel.value, data.project_id, db)
+        _validate_role_assignment(creator, executor, data.channel.value, data.project_id, data.section_id, db)
         mission = Mission(**base, executor_id=executor_id, creator_id=creator_id)
         mission.tags = tags
         db.add(mission)

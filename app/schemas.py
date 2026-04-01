@@ -265,12 +265,13 @@ class MissionCreate(BaseModel):
     tag_ids: List[int] = []
     channel: ChannelEnum = ChannelEnum.line_management
     project_id: Optional[int] = None
+    section_id: Optional[int] = None
     gennis_executor_id: Optional[int] = None
     gennis_reviewer_id: Optional[int] = None
     turon_executor_id: Optional[int] = None
     turon_reviewer_id: Optional[int] = None
 
-    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "gennis_executor_id", "gennis_reviewer_id", "turon_executor_id", "turon_reviewer_id", mode="before")
+    @field_validator("project_id", "section_id", "branch_id", "system_id", "location_id", "reviewer_id", "gennis_executor_id", "gennis_reviewer_id", "turon_executor_id", "turon_reviewer_id", mode="before")
     @classmethod
     def zero_to_none(cls, v):
         return None if v == 0 else v
@@ -342,12 +343,13 @@ class MissionUpdate(BaseModel):
     tag_ids: Optional[List[int]] = None
     channel: Optional[ChannelEnum] = None
     project_id: Optional[int] = None
+    section_id: Optional[int] = None
     gennis_executor_id: Optional[int] = None
     gennis_reviewer_id: Optional[int] = None
     turon_executor_id: Optional[int] = None
     turon_reviewer_id: Optional[int] = None
 
-    @field_validator("project_id", "branch_id", "system_id", "location_id", "reviewer_id", "executor_id", "gennis_executor_id", "gennis_reviewer_id", "turon_executor_id", "turon_reviewer_id", mode="before")
+    @field_validator("project_id", "section_id", "branch_id", "system_id", "location_id", "reviewer_id", "executor_id", "gennis_executor_id", "gennis_reviewer_id", "turon_executor_id", "turon_reviewer_id", mode="before")
     @classmethod
     def zero_to_none(cls, v):
         return None if v == 0 else v
@@ -390,6 +392,7 @@ class MissionOut(BaseModel):
     tags: List[TagOut] = []
     channel: str
     project_id: Optional[int]
+    section_id: Optional[int]
     approval_status: Optional[str]
     approved_by_id: Optional[int]
     gennis_executor_id: Optional[int]
