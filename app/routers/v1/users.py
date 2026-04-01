@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from datetime import date
 from ...database import get_db
 from sqlalchemy.orm import joinedload
-from ...models import User, Section, Project, ProjectMember, SectionMember
+from ...models import User, Section, Project, ProjectMember, SectionMember, SalaryMonth
 from ...schemas import UserCreate, UserUpdate, UserOut, UserProfileOut, UserProjectOut, UserSectionOut
 from app.core.security import get_password_hash
 
@@ -87,6 +88,36 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
     for s in led_sections:
         if s.id not in all_section_ids:
             sections.append(s)
+
+    # Auto-create missing SalaryMonth records for each month since user was created
+    if user.salary:
+        start = user.created_at.date().replace(day=1) if user.created_at else date.today().replace(day=1)
+        today = date.today()
+        current = start
+        existing_months = {
+            sm.date
+            for sm in db.query(SalaryMonth.date)
+            .filter(SalaryMonth.user_id == user_id, SalaryMonth.deleted == False)
+            .all()
+        }
+        created_any = False
+        while current <= today.replace(day=1):
+            if current not in existing_months:
+                db.add(SalaryMonth(
+                    user_id=user_id,
+                    salary=user.salary,
+                    taken_salary=0,
+                    remaining_salary=user.salary,
+                    date=current,
+                ))
+                created_any = True
+            # advance to next month
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1)
+            else:
+                current = current.replace(month=current.month + 1)
+        if created_any:
+            db.commit()
 
     profile = UserProfileOut.model_validate(user)
     profile.projects = [UserProjectOut.model_validate(p) for p in projects]

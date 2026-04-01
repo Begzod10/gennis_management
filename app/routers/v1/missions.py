@@ -675,6 +675,7 @@ def list_missions(
     location_id: Optional[int] = Query(None),
     channel: Optional[str] = Query(None),
     project_id: Optional[int] = Query(None),
+    overdue: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
 ):
     q = db.query(Mission).filter(Mission.deleted == False)
@@ -696,6 +697,11 @@ def list_missions(
         q = q.filter(Mission.channel == channel)
     if project_id:
         q = q.filter(Mission.project_id == project_id)
+    if overdue:
+        q = q.filter(
+            Mission.deadline < date.today(),
+            Mission.status.notin_(["completed", "approved"]),
+        )
     return q.order_by(Mission.created_at.desc()).all()
 
 
