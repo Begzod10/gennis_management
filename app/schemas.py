@@ -308,13 +308,14 @@ class MissionBulkCreate(BaseModel):
     tag_ids: List[int] = []
     channel: ChannelEnum = ChannelEnum.line_management
     project_id: Optional[int] = None
+    section_id: Optional[int] = None
     system_id: Optional[int] = None
     gennis_executor_ids: List[GennisExecutorItem] = []
     gennis_reviewer_id: Optional[int] = None
     turon_executor_ids: List[TuronExecutorItem] = []
     turon_reviewer_id: Optional[int] = None
 
-    @field_validator("project_id", "system_id", "reviewer_id", "gennis_reviewer_id", "turon_reviewer_id", mode="before")
+    @field_validator("project_id", "section_id", "system_id", "reviewer_id", "gennis_reviewer_id", "turon_reviewer_id", mode="before")
     @classmethod
     def zero_to_none(cls, v):
         return None if v == 0 else v
