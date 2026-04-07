@@ -21,6 +21,11 @@ from .routers.v1 import (
     projects,
     sections,
     combined,
+    calendar,
+    turon_students,
+    turon_classes,
+    turon_timetable,
+    turon_teachers,
 )
 
 @asynccontextmanager
@@ -101,6 +106,11 @@ app.include_router(investments.router, prefix=V1)
 app.include_router(projects.router, prefix=V1)
 app.include_router(sections.router, prefix=V1)
 app.include_router(combined.router, prefix=V1)
+app.include_router(calendar.router, prefix=V1)
+app.include_router(turon_students.router, prefix=V1)
+app.include_router(turon_classes.router, prefix=V1)
+app.include_router(turon_timetable.router, prefix=V1)
+app.include_router(turon_teachers.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)

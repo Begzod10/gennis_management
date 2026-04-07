@@ -12,4 +12,9 @@ from . import (
     projects,
     sections,
     combined,
+    calendar,
+    turon_students,
+    turon_classes,
+    turon_timetable,
+    turon_teachers,
 )
