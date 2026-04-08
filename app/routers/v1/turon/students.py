@@ -8,8 +8,8 @@ from app.database import get_turon_db
 from app.external_models.turon import (
     Student, CustomUser, DeletedStudent, DeletedNewStudent,
     Group, ClassNumber, ClassColors, Language, GroupReason, Branch,
-    StudentCharity, AttendancePerMonth, Subject, student_subjects,
-    group_students,
+    StudentCharity, AttendancePerMonth, Subject, StudentExamResult, Teacher,
+    student_subjects, group_students,
 )
 from app.routers.v1.auth import get_current_user
 from app.models import User
@@ -329,6 +329,73 @@ def active_students(
         })
 
     return {"count": total, "results": results}
+
+
+# ── Student exam results ──────────────────────────────────────────────────────
+
+@router.get("/student-exam-results")
+def student_exam_results(
+    teacher: Optional[int] = Query(None),
+    group: Optional[int] = Query(None),
+    student: Optional[int] = Query(None),
+    subject: Optional[int] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: Session = Depends(get_turon_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(StudentExamResult)
+
+    if teacher:
+        q = q.filter(StudentExamResult.teacher_id == teacher)
+    if group:
+        q = q.filter(StudentExamResult.group_id == group)
+    if student:
+        q = q.filter(StudentExamResult.student_id == student)
+    if subject:
+        q = q.filter(StudentExamResult.subject_id == subject)
+    if year:
+        q = q.filter(extract("year", StudentExamResult.datetime) == year)
+    if month:
+        q = q.filter(extract("month", StudentExamResult.datetime) == month)
+
+    rows = q.order_by(StudentExamResult.datetime.desc()).all()
+
+    student_ids = {r.student_id for r in rows}
+    teacher_ids = {r.teacher_id for r in rows}
+    group_ids = {r.group_id for r in rows}
+    subject_ids = {r.subject_id for r in rows}
+
+    students_map = {s.id: s for s in db.query(Student).filter(Student.id.in_(student_ids)).all()} if student_ids else {}
+    s_user_ids = {s.user_id for s in students_map.values() if s.user_id}
+    s_users = {u.id: u for u in db.query(CustomUser).filter(CustomUser.id.in_(s_user_ids)).all()} if s_user_ids else {}
+
+    teachers_map = {t.id: t for t in db.query(Teacher).filter(Teacher.id.in_(teacher_ids)).all()} if teacher_ids else {}
+    t_user_ids = {t.user_id for t in teachers_map.values() if t.user_id}
+    t_users = {u.id: u for u in db.query(CustomUser).filter(CustomUser.id.in_(t_user_ids)).all()} if t_user_ids else {}
+
+    groups_map = {g.id: g for g in db.query(Group).filter(Group.id.in_(group_ids)).all()} if group_ids else {}
+    subjects_map = {s.id: s for s in db.query(Subject).filter(Subject.id.in_(subject_ids)).all()} if subject_ids else {}
+
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "score": r.score,
+            "datetime": r.datetime.isoformat() if r.datetime else None,
+            "student": r.student_id,
+            "student_name": s_users[students_map[r.student_id].user_id].name if r.student_id in students_map and students_map[r.student_id].user_id in s_users else None,
+            "student_surname": s_users[students_map[r.student_id].user_id].surname if r.student_id in students_map and students_map[r.student_id].user_id in s_users else None,
+            "teacher": r.teacher_id,
+            "teacher_name": t_users[teachers_map[r.teacher_id].user_id].name if r.teacher_id in teachers_map and teachers_map[r.teacher_id].user_id in t_users else None,
+            "teacher_surname": t_users[teachers_map[r.teacher_id].user_id].surname if r.teacher_id in teachers_map and teachers_map[r.teacher_id].user_id in t_users else None,
+            "group": r.group_id,
+            "group_name": groups_map[r.group_id].name if r.group_id in groups_map else None,
+            "subject": r.subject_id,
+            "subject_name": subjects_map[r.subject_id].name if r.subject_id in subjects_map else None,
+        }
+        for r in rows
+    ]
 
 
 # ── Student detail ────────────────────────────────────────────────────────────

@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
-from ...database import get_gennis_db
-from ...external_models import gennis as G
+from app.database import get_gennis_db
+from app.external_models import gennis as G
 from typing import List, Optional, Union
-from ...schemas_stats import (
+from app.schemas_stats import (
     BranchItem,
     GennisDebtorsOut,
     GennisTeacherSalariesOut, GennisAssistentSalariesOut, GennisStaffSalariesOut,

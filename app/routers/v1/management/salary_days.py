@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import List
-from ...database import get_db
-from ...models import SalaryMonth, SalaryDay
-from ...schemas import SalaryDayCreate, SalaryDayUpdate, SalaryDayOut
+from app.database import get_db
+from app.models import SalaryMonth, SalaryDay
+from app.schemas import SalaryDayCreate, SalaryDayUpdate, SalaryDayOut
 
 router = APIRouter(prefix="/salary-days", tags=["Salary Days"])
 

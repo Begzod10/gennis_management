@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from ...database import get_db, get_gennis_write_db, get_turon_write_db
-from ...models import Mission, MissionSubtask, User
-from ...schemas import MissionSubtaskCreate, MissionSubtaskUpdate, MissionSubtaskOut
-from ...external_models.gennis import GennisMission, GennisMissionSubtask
-from ...external_models.turon import TuronMission, TuronMissionSubtask
+from app.database import get_db, get_gennis_write_db, get_turon_write_db
+from app.models import Mission, MissionSubtask, User
+from app.schemas import MissionSubtaskCreate, MissionSubtaskUpdate, MissionSubtaskOut
+from app.external_models.gennis import GennisMission, GennisMissionSubtask
+from app.external_models.turon import TuronMission, TuronMissionSubtask
 
 router = APIRouter(prefix="/missions/{mission_id}/subtasks", tags=["Mission Subtasks"])
 

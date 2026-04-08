@@ -39,6 +39,7 @@ class User(Base):
     locked_until = Column(DateTime, nullable=True)
     last_login = Column(DateTime, nullable=True)
     last_logout_at = Column(DateTime, nullable=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=True, index=True)
     salary = Column(BigInteger, nullable=True, default=0)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, nullable=True)

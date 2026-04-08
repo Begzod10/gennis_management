@@ -5,12 +5,12 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from ...database import get_db, get_gennis_write_db, get_turon_write_db
-from ...models import Mission, MissionProof, User
-from ...schemas import MissionProofOut
-from ...external_models.gennis import GennisMission, GennisMissionProof
-from ...external_models.turon import TuronMission, TuronMissionProof
-from ...config import settings
+from app.database import get_db, get_gennis_write_db, get_turon_write_db
+from app.models import Mission, MissionProof, User
+from app.schemas import MissionProofOut
+from app.external_models.gennis import GennisMission, GennisMissionProof
+from app.external_models.turon import TuronMission, TuronMissionProof
+from app.config import settings
 
 router = APIRouter(prefix="/missions/{mission_id}/proofs", tags=["Mission Proofs"])
 

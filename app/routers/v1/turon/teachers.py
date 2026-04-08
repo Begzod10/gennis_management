@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.database import get_turon_db
 from app.external_models.turon import (
-    Teacher, CustomUser, Subject, Language, Group, ClassTypes, Branch,
+    Teacher, CustomUser, Subject, Language, Group, ClassTypes, Branch, TeacherSalaryType,
     teacher_subjects, group_teachers,
 )
 from app.routers.v1.auth import get_current_user
@@ -127,6 +127,31 @@ def list_teachers(
     return {"count": total, "results": results}
 
 
+
+
+@router.get("/salary-types")
+def teacher_salary_types(
+    branch: Optional[int] = Query(None),
+    db: Session = Depends(get_turon_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(TeacherSalaryType)
+    if branch:
+        q = q.filter(TeacherSalaryType.branch_id == branch)
+    rows = q.all()
+    branch_ids = {r.branch_id for r in rows if r.branch_id}
+    branches = {b.id: b for b in db.query(Branch).filter(Branch.id.in_(branch_ids)).all()} if branch_ids else {}
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "salary": r.salary,
+            "branch": {"id": branches[r.branch_id].id, "name": branches[r.branch_id].name} if r.branch_id in branches else None,
+        }
+        for r in rows
+    ]
+
+
 # ── Teacher detail ────────────────────────────────────────────────────────────
 
 @router.get("/{teacher_id}")
@@ -178,3 +203,24 @@ def get_teacher(
         "groups": [{"id": g.id, "name": g.name} for g in groups],
         "status": status,
     }
+
+
+@router.get("/salary-types")
+def salary_type_list(
+    branch: Optional[int] = Query(None),
+    db: Session = Depends(get_turon_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(TeacherSalaryType)
+    if branch:
+        q = q.filter(TeacherSalaryType.branch_id == branch)
+    rows = q.all()
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "salary": r.salary,
+            "branch_id": r.branch_id,
+        }
+        for r in rows
+    ]

@@ -122,6 +122,7 @@ class CustomUser(TuronBase):
     id = Column(BigInteger, primary_key=True)
     name = Column(String(200))
     surname = Column(String(200))
+    father_name = Column(String(200), nullable=True)
     phone = Column(String(200))
     branch_id = Column(BigInteger, ForeignKey("branch_branch.id"))
     language_id = Column(BigInteger, ForeignKey("language_language.id"), nullable=True)
@@ -186,6 +187,19 @@ class DeletedNewStudent(TuronBase):
     student_id = Column(BigInteger, ForeignKey("students_student.id"))
 
 
+class StudentExamResult(TuronBase):
+    __tablename__ = "students_studentexamresult"
+    id = Column(BigInteger, primary_key=True)
+    title = Column(String(255))
+    group_id = Column(BigInteger, ForeignKey("group_group.id"))
+    teacher_id = Column(BigInteger, ForeignKey("teachers_teacher.id"))
+    student_id = Column(BigInteger, ForeignKey("students_student.id"))
+    subject_id = Column(BigInteger, ForeignKey("subjects_subject.id"))
+    score = Column(Integer, nullable=True)
+    datetime = Column(DateTime, nullable=True)
+    created = Column(DateTime, nullable=True)
+
+
 # ── Teachers ─────────────────────────────────────────────────────────────────
 
 # M2M: Teacher.subject  -> teachers_teacher_subject
@@ -222,6 +236,15 @@ class Teacher(TuronBase):
     color = Column(String(50), nullable=True)
     class_type_id = Column(BigInteger, ForeignKey("classes_classtypes.id"), nullable=True)
     deleted = Column(Boolean, default=False)
+
+
+class TeacherSalaryType(TuronBase):
+    __tablename__ = "teachers_teachersalarytype"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(String(255))
+    salary = Column(Integer, nullable=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
+    turon_old_id = Column(BigInteger, nullable=True)
 
 
 class TeacherSalary(TuronBase):
@@ -267,6 +290,64 @@ class Group(TuronBase):
     subject_id = Column(BigInteger, ForeignKey("subjects_subject.id"), nullable=True)
     class_number_id = Column(BigInteger, ForeignKey("classes_classnumber.id"), nullable=True)
     color_id = Column(BigInteger, ForeignKey("classes_classcolors.id"), nullable=True)
+    class_type_id = Column(BigInteger, ForeignKey("classes_classtypes.id"), nullable=True)
+    deleted = Column(Boolean, default=False)
+
+
+class GroupSubjects(TuronBase):
+    __tablename__ = "group_groupsubjects"
+    id = Column(BigInteger, primary_key=True)
+    group_id = Column(BigInteger, ForeignKey("group_group.id"))
+    subject_id = Column(BigInteger, ForeignKey("subjects_subject.id"))
+    hours = Column(Integer, nullable=True)
+    count = Column(Integer, nullable=True)
+
+
+# ── Flows ─────────────────────────────────────────────────────────────────────
+
+flow_students = Table(
+    "flows_flow_students",
+    TuronBase.metadata,
+    Column("flow_id", BigInteger, ForeignKey("flows_flow.id")),
+    Column("student_id", BigInteger, ForeignKey("students_student.id")),
+)
+
+
+class Flow(TuronBase):
+    __tablename__ = "flows_flow"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(String(255))
+    subject_id = Column(BigInteger, ForeignKey("subjects_subject.id"), nullable=True)
+    teacher_id = Column(BigInteger, ForeignKey("teachers_teacher.id"), nullable=True)
+    desc = Column(String, nullable=True)
+    activity = Column(Boolean, default=False)
+    level_id = Column(BigInteger, ForeignKey("subjects_subjectlevel.id"), nullable=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
+    classes = Column(JSON, nullable=True)
+    order = Column(Integer, nullable=True)
+
+
+# ── Terms / Tests ─────────────────────────────────────────────────────────────
+
+class Term(TuronBase):
+    __tablename__ = "terms_term"
+    id = Column(BigInteger, primary_key=True)
+    quarter = Column(Integer)
+    start_date = Column(Date)
+    end_date = Column(Date)
+    academic_year = Column(String(9))
+
+
+class TermTest(TuronBase):
+    __tablename__ = "terms_test"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(String(255))
+    weight = Column(Integer)
+    term_id = Column(BigInteger, ForeignKey("terms_term.id"))
+    date = Column(Date)
+    subject_id = Column(BigInteger, ForeignKey("subjects_subject.id"))
+    group_id = Column(BigInteger, ForeignKey("group_group.id"))
+    class_number_id = Column(BigInteger, ForeignKey("classes_classnumber.id"), nullable=True)
     deleted = Column(Boolean, default=False)
 
 
@@ -289,6 +370,17 @@ class GroupMonthlySummary(TuronBase):
     year = Column(Integer)
     month = Column(Integer)
     stats = Column(JSON, default=dict)
+
+
+class StudentDailyAttendance(TuronBase):
+    __tablename__ = "attendances_studentdailyattendance"
+    id = Column(BigInteger, primary_key=True)
+    monthly_summary_id = Column(BigInteger, ForeignKey("attendances_studentmonthlysummary.id"))
+    day = Column(Date)
+    status = Column(Boolean, default=False)
+    reason = Column(String(255), nullable=True)
+    entry_time = Column(DateTime, nullable=True)
+    leave_time = Column(DateTime, nullable=True)
 
 
 class AttendancePerMonth(TuronBase):
@@ -607,6 +699,7 @@ class ClassTimeTable(TuronBase):
     __tablename__ = "school_time_table_classtimetable"
     id = Column(BigInteger, primary_key=True)
     group_id = Column(BigInteger, ForeignKey("group_group.id"), nullable=True)
+    flow_id = Column(BigInteger, ForeignKey("flows_flow.id"), nullable=True)
     week_id = Column(BigInteger, ForeignKey("time_table_weekdays.id"), nullable=True)
     room_id = Column(BigInteger, ForeignKey("rooms_room.id"), nullable=True)
     hours_id = Column(BigInteger, ForeignKey("school_time_table_hours.id"), nullable=True)

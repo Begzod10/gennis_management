@@ -3,12 +3,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import extract
 from typing import Optional
 
-from ...database import get_db, get_gennis_write_db, get_turon_write_db
-from ...models import Investment
-from ...external_models.gennis import GennisInvestment
-from ...external_models.turon import TuronInvestment
-from ...schemas import InvestmentCreate, InvestmentUpdate, InvestmentOut
-from ...dependencies import get_current_user
+from app.database import get_db, get_gennis_write_db, get_turon_write_db
+from app.models import Investment
+from app.external_models.gennis import GennisInvestment
+from app.external_models.turon import TuronInvestment
+from app.schemas import InvestmentCreate, InvestmentUpdate, InvestmentOut
+from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/investments", tags=["Investments"])
 

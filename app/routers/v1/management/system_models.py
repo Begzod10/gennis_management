@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 
-from ...database import get_db
-from ...models import SystemModel
-from ...schemas import SystemModelCreate, SystemModelUpdate, SystemModelOut
+from app.database import get_db
+from app.models import SystemModel
+from app.schemas import SystemModelCreate, SystemModelUpdate, SystemModelOut
 
 router = APIRouter(prefix="/system-models", tags=["System Models"])
 

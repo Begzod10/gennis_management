@@ -5,12 +5,12 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-from ...database import get_db, get_gennis_write_db, get_turon_write_db
-from ...models import Mission, MissionComment, User
-from ...schemas import MissionCommentOut
-from ...config import settings
-from ...external_models.gennis import GennisMission, GennisMissionComment
-from ...external_models.turon import TuronMission, TuronMissionComment
+from app.database import get_db, get_gennis_write_db, get_turon_write_db
+from app.models import Mission, MissionComment, User
+from app.schemas import MissionCommentOut
+from app.config import settings
+from app.external_models.gennis import GennisMission, GennisMissionComment
+from app.external_models.turon import TuronMission, TuronMissionComment
 
 router = APIRouter(prefix="/missions/{mission_id}/comments", tags=["Mission Comments"])
 

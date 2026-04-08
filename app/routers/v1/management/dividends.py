@@ -3,12 +3,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import extract
 from typing import Optional
 
-from ...database import get_db, get_gennis_write_db, get_turon_write_db
-from ...models import Dividend
-from ...external_models.gennis import GennisDividend
-from ...external_models.turon import TuronDividend
-from ...schemas import DividendCreate, DividendUpdate, DividendOut
-from ...dependencies import get_current_user
+from app.database import get_db, get_gennis_write_db, get_turon_write_db
+from app.models import Dividend
+from app.external_models.gennis import GennisDividend
+from app.external_models.turon import TuronDividend
+from app.schemas import DividendCreate, DividendUpdate, DividendOut
+from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/dividends", tags=["Dividends"])
 

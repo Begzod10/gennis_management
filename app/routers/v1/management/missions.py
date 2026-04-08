@@ -2,15 +2,30 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List, Optional
 from datetime import datetime, date
-from ...database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
-from ...models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember
-from ...schemas import (
+from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
+from app.models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember
+from app.schemas import (
     MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
     MissionApprove, MissionHistoryOut,
 )
-from ...external_models.gennis import GennisMission, GennisMissionHistory, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
-from ...external_models.turon import TuronMission, TuronMissionHistory, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
+from app.external_models.gennis import GennisMission, GennisMissionHistory, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
+from app.external_models.turon import TuronMission, TuronMissionHistory, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
 from pydantic import BaseModel
+from app.tasks import send_telegram_notification
+from app.services.telegram import (
+    tpl_assigned, tpl_you_are_reviewer, tpl_completed,
+    tpl_status_changed, tpl_approved, tpl_declined,
+    tpl_redirected_new, tpl_redirected_creator, tpl_deleted, tpl_updated,
+)
+
+
+def _tg(db: Session, user_id: Optional[int], text: str):
+    """Fire-and-forget Telegram notification to a management user."""
+    if not user_id:
+        return
+    u = db.query(User).filter(User.id == user_id).first()
+    if u and u.telegram_id:
+        send_telegram_notification.delay(u.telegram_id, text)
 
 
 # ── Role-based assignment rules ───────────────────────────────────────────────
@@ -525,6 +540,12 @@ def create_mission(
         created.append(mission)
 
     db.commit()
+
+    creator_name = f"{creator.name} {creator.surname}".strip()
+    for mission in created:
+        _tg(db, mission.executor_id, tpl_assigned(mission.title, mission.deadline, creator_name))
+        _tg(db, mission.reviewer_id, tpl_you_are_reviewer(mission.title, mission.deadline, creator_name))
+
     return created
 
 
@@ -627,6 +648,12 @@ def create_bulk_missions(
         created.append(mission)
 
     db.commit()
+
+    creator_name = f"{creator.name} {creator.surname}".strip()
+    for mission in created:
+        _tg(db, mission.executor_id, tpl_assigned(mission.title, mission.deadline, creator_name))
+        _tg(db, mission.reviewer_id, tpl_you_are_reviewer(mission.title, mission.deadline, creator_name))
+
     return created
 
 
@@ -749,14 +776,17 @@ def update_mission(
     db.commit()
     db.refresh(mission)
 
-    if (
-        mission.executor_id != old_executor
-        or mission.reviewer_id != old_reviewer
+    executor_changed = mission.executor_id != old_executor
+    reviewer_changed = mission.reviewer_id != old_reviewer
+    assignees_changed = (
+        executor_changed or reviewer_changed
         or mission.gennis_executor_id != old_gennis_executor
         or mission.gennis_reviewer_id != old_gennis_reviewer
         or mission.turon_executor_id != old_turon_executor
         or mission.turon_reviewer_id != old_turon_reviewer
-    ):
+    )
+
+    if assignees_changed:
         entry = _log_history(mission, db, changed_by_id=changed_by_id)
         db.commit()
         _sync_history_to_gennis(entry, mission, db, gennis_db)
@@ -764,6 +794,23 @@ def update_mission(
 
     _sync_to_gennis(mission, gennis_db)
     _sync_to_turon(mission, turon_db)
+
+    # Telegram notifications
+    changer = db.query(User).filter(User.id == changed_by_id).first() if changed_by_id else None
+    changer_name = f"{changer.name} {changer.surname}".strip() if changer else "Tizim"
+
+    if executor_changed:
+        creator = db.query(User).filter(User.id == mission.creator_id).first()
+        creator_name = f"{creator.name} {creator.surname}".strip() if creator else "Tizim"
+        _tg(db, mission.executor_id, tpl_assigned(mission.title, mission.deadline, creator_name))
+    if reviewer_changed:
+        creator = db.query(User).filter(User.id == mission.creator_id).first() if not executor_changed else creator
+        creator_name = f"{creator.name} {creator.surname}".strip() if creator else "Tizim"
+        _tg(db, mission.reviewer_id, tpl_you_are_reviewer(mission.title, mission.deadline, creator_name))
+    if not executor_changed and not reviewer_changed:
+        # General update — notify current executor and reviewer
+        _tg(db, mission.executor_id, tpl_updated(mission.title, changer_name))
+        _tg(db, mission.reviewer_id, tpl_updated(mission.title, changer_name))
 
     return mission
 
@@ -797,6 +844,8 @@ def delete_mission(
     _sync_delete(mission, gennis_db, turon_db)
     mission.deleted = True
     db.commit()
+    _tg(db, mission.executor_id, tpl_deleted(mission.title))
+    _tg(db, mission.reviewer_id, tpl_deleted(mission.title))
 
 
 @router.patch("/{mission_id}/status", response_model=MissionOut)
@@ -815,6 +864,9 @@ def change_status(
     _sync_to_gennis(mission, gennis_db)
     _sync_to_turon(mission, turon_db)
 
+    _tg(db, mission.executor_id, tpl_status_changed(mission.title, mission.status))
+    _tg(db, mission.reviewer_id, tpl_status_changed(mission.title, mission.status))
+
     return mission
 
 
@@ -830,6 +882,14 @@ def approve_mission(
     mission.approved_by_id = approver_id
     db.commit()
     db.refresh(mission)
+
+    approver_name = _resolve_user_name(db, approver_id) or ""
+    if data.approval_status.value == "approved":
+        _tg(db, mission.executor_id, tpl_approved(mission.title, approver_name))
+        _tg(db, mission.creator_id, tpl_approved(mission.title, approver_name))
+    else:
+        _tg(db, mission.executor_id, tpl_declined(mission.title, approver_name))
+
     return mission
 
 
@@ -880,6 +940,7 @@ def redirect_mission(
                 detail="You can only redirect missions to members of your project or section",
             )
 
+    old_executor_id = mission.executor_id
     mission.original_executor_id = mission.executor_id
     mission.executor_id = new_executor_id
     mission.redirected_by_id = redirected_by_id
@@ -895,6 +956,13 @@ def redirect_mission(
     _sync_history_to_turon(entry, mission, db, turon_db)
     db.commit()
     db.refresh(mission)
+
+    redirected_by_name = f"{redirected_by.name} {redirected_by.surname}".strip()
+    old_executor_name = _resolve_user_name(db, old_executor_id) or ""
+    new_executor_name = f"{new_executor.name} {new_executor.surname}".strip()
+    _tg(db, new_executor_id, tpl_redirected_new(mission.title, redirected_by_name))
+    _tg(db, mission.creator_id, tpl_redirected_creator(mission.title, old_executor_name, new_executor_name))
+
     return mission
 
 
@@ -920,6 +988,10 @@ def complete_mission(
 
     _sync_to_gennis(mission, gennis_db)
     _sync_to_turon(mission, turon_db)
+
+    executor_name = _resolve_user_name(db, mission.executor_id) or ""
+    _tg(db, mission.reviewer_id, tpl_completed(mission.title, executor_name, mission.finish_date))
+    _tg(db, mission.creator_id, tpl_completed(mission.title, executor_name, mission.finish_date))
 
     return mission
 

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-from ...database import get_db
-from ...models import Section, SectionMember, User
-from ...schemas import SectionCreate, SectionUpdate, SectionOut, SectionMemberAdd, SectionMemberOut, UserOut
+from app.database import get_db
+from app.models import Section, SectionMember, User
+from app.schemas import SectionCreate, SectionUpdate, SectionOut, SectionMemberAdd, SectionMemberOut, UserOut
 
 router = APIRouter(prefix="/sections", tags=["Sections"])
 

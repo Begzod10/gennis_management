@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from typing import Optional
 
-from ...database import get_gennis_db, get_turon_db, get_db
-from ...external_models import gennis as G
-from ...external_models import turon as T
-from ...models import Dividend, Investment
-from ...schemas_stats import (
+from app.database import get_gennis_db, get_turon_db, get_db
+from app.external_models import gennis as G
+from app.external_models import turon as T
+from app.models import Dividend, Investment
+from app.schemas_stats import (
     ByPaymentType, GennisOverheadSummary, TuronOverheadSummary,
     GennisSummary, TuronSummary, OverviewOut,
 )

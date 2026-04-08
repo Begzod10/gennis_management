@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
-from ...database import get_db
-from ...models import Notification
-from ...schemas import NotificationOut
+from app.database import get_db
+from app.models import Notification
+from app.schemas import NotificationOut
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 

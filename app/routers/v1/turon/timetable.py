@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.database import get_turon_db
 from app.external_models.turon import (
-    ClassTimeTable, Hours, Room, WeekDays, Group,
+    ClassTimeTable, Hours, Room, WeekDays, Group, Flow,
     Teacher, CustomUser, Subject, group_students,
 )
 from app.routers.v1.auth import get_current_user
@@ -26,10 +26,14 @@ def timetable_lessons(
     db: Session = Depends(get_turon_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Use provided date's week, or default to current week
-    anchor = date.fromisoformat(date_str) if date_str else date.today()
-    start_of_week = anchor - timedelta(days=anchor.weekday())
-    week_dates = [start_of_week + timedelta(days=i) for i in range(7)]
+    # Single date → show only that day; no date → show full current week
+    if date_str:
+        anchor = date.fromisoformat(date_str)
+        week_dates = [anchor]
+    else:
+        today = date.today()
+        start_of_week = today - timedelta(days=today.weekday())
+        week_dates = [start_of_week + timedelta(days=i) for i in range(7)]
 
     # Pre-fetch rooms and hours for branch
     rooms = db.query(Room).filter(Room.branch_id == branch, Room.deleted == False).order_by(Room.order, Room.id).all()
@@ -70,21 +74,18 @@ def timetable_lessons(
     for e in all_entries:
         entry_map.setdefault((e.date, e.room_id, e.hours_id), e)
 
-    # Pre-fetch groups, teachers, subjects
+    # Pre-fetch groups, flows, teachers, subjects
     group_ids = {e.group_id for e in all_entries if e.group_id}
+    flow_ids = {e.flow_id for e in all_entries if e.flow_id}
     teacher_ids = {e.teacher_id for e in all_entries if e.teacher_id}
     subject_ids = {e.subject_id for e in all_entries if e.subject_id}
-    user_ids_for_teachers = set()
 
     groups = {g.id: g for g in db.query(Group).filter(Group.id.in_(group_ids)).all()} if group_ids else {}
+    flows = {f.id: f for f in db.query(Flow).filter(Flow.id.in_(flow_ids)).all()} if flow_ids else {}
     teachers = {t.id: t for t in db.query(Teacher).filter(Teacher.id.in_(teacher_ids)).all()} if teacher_ids else {}
-    if teachers:
-        user_ids_for_teachers = {t.user_id for t in teachers.values()}
+    user_ids_for_teachers = {t.user_id for t in teachers.values()}
     t_users = {u.id: u for u in db.query(CustomUser).filter(CustomUser.id.in_(user_ids_for_teachers)).all()} if user_ids_for_teachers else {}
     subj_map = {s.id: s for s in db.query(Subject).filter(Subject.id.in_(subject_ids)).all()} if subject_ids else {}
-
-    hours_map = {h.id: h for h in hours}
-    rooms_map = {r.id: r for r in rooms}
 
     # Build response
     time_tables = []
@@ -95,21 +96,28 @@ def timetable_lessons(
             for hour in hours:
                 entry = entry_map.get((day_date, room.id, hour.id))
                 if entry:
-                    grp = groups.get(entry.group_id)
                     tch = teachers.get(entry.teacher_id)
                     tch_user = t_users.get(tch.user_id) if tch else None
                     subj = subj_map.get(entry.subject_id)
+                    is_flow = entry.flow_id is not None and entry.group_id is None
+                    if is_flow:
+                        fl = flows.get(entry.flow_id)
+                        group_data = {"id": fl.id, "name": fl.name, "classes": fl.classes} if fl else {}
+                    else:
+                        grp = groups.get(entry.group_id)
+                        group_data = {"id": grp.id, "name": grp.name} if grp else {}
                     lessons.append({
                         "id": entry.id,
                         "status": True,
+                        "is_flow": is_flow,
                         "hours": hour.id,
                         "room": room.id,
-                        "group": {"id": grp.id, "name": grp.name} if grp else {},
+                        "group": group_data,
                         "teacher": {"id": tch.id, "name": f"{tch_user.name} {tch_user.surname}" if tch_user else None} if tch else {},
                         "subject": {"id": subj.id, "name": subj.name} if subj else {},
                     })
                 else:
-                    lessons.append({"status": False, "hours": hour.id, "room": room.id, "group": {}, "teacher": {}, "subject": {}})
+                    lessons.append({"status": False, "is_flow": False, "hours": hour.id, "room": room.id, "group": {}, "teacher": {}, "subject": {}})
             rooms_info.append({"id": room.id, "name": room.name, "order": room.order, "lessons": lessons})
 
         time_tables.append({

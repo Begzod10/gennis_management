@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from ...database import get_db
-from ...models import Branch
-from ...schemas import BranchCreate, BranchOut
+from app.database import get_db
+from app.models import Branch
+from app.schemas import BranchCreate, BranchOut
 
 router = APIRouter(prefix="/branches", tags=["Branches"])
 

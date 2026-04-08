@@ -10,10 +10,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, exists, and_, or_, case, select
 
-from ...database import get_turon_db
-from ...external_models import turon as T
+from app.database import get_turon_db
+from app.external_models import turon as T
 from typing import List, Optional
-from ...schemas_stats import (
+from app.schemas_stats import (
     BranchItem,
     TuronSchoolStudentsOut, TuronTeacherSalariesOut,
     TuronEmployerSalariesOut, TuronEncashmentOut,

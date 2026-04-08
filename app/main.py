@@ -7,25 +7,19 @@ from sqlalchemy import text
 from .database import engine, gennis_write_engine, turon_write_engine
 from .external_models.gennis import GennisDividend, GennisInvestment
 from .external_models.turon import TuronDividend, TuronInvestment
-from .routers.v1 import (
-    auth,
+from .routers.v1 import auth
+from .routers.v1.management import (
     jobs, users, salary_months, salary_days,
     system_models, branches, tags, missions,
     mission_subtasks, mission_attachments, mission_comments, mission_proofs,
-    notifications,
-    statistics,
-    gennis_detail,
-    turon_detail,
-    dividends,
-    investments,
-    projects,
-    sections,
-    combined,
-    calendar,
-    turon_students,
-    turon_classes,
-    turon_timetable,
-    turon_teachers,
+    notifications, statistics, dividends, investments,
+    projects, sections, combined, telegram_bot,
+)
+from .routers.v1.gennis import detail as gennis_detail
+from .routers.v1.turon import (
+    calendar, classes as turon_classes, detail as turon_detail,
+    students as turon_students, teachers as turon_teachers,
+    terms as turon_terms, timetable as turon_timetable,
 )
 
 @asynccontextmanager
@@ -111,6 +105,8 @@ app.include_router(turon_students.router, prefix=V1)
 app.include_router(turon_classes.router, prefix=V1)
 app.include_router(turon_timetable.router, prefix=V1)
 app.include_router(turon_teachers.router, prefix=V1)
+app.include_router(turon_terms.router, prefix=V1)
+app.include_router(telegram_bot.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)

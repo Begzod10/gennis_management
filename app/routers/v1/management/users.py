@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import date
-from ...database import get_db
+from app.database import get_db
 from sqlalchemy.orm import joinedload
-from ...models import User, Section, Project, ProjectMember, SectionMember, SalaryMonth
-from ...schemas import UserCreate, UserUpdate, UserOut, UserProfileOut, UserProjectOut, UserSectionOut
+from app.models import User, Section, Project, ProjectMember, SectionMember, SalaryMonth
+from app.schemas import UserCreate, UserUpdate, UserOut, UserProfileOut, UserProjectOut, UserSectionOut
 from app.core.security import get_password_hash
 
 router = APIRouter(prefix="/users", tags=["Users"])
