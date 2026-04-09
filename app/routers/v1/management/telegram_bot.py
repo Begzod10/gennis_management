@@ -1,6 +1,7 @@
 import os
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 import redis
 
@@ -19,7 +20,25 @@ _redis = redis.Redis.from_url(
 _LINK_TTL = 300  # 5 minutes
 
 
-@router.post("/generate-link-code")
+@router.post(
+    "/generate-link-code",
+    summary="Generate one-time link code",
+    responses={
+        200: {
+            "description": "One-time code to send to the bot",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": "aB3xK9mZ",
+                        "expires_in": 300,
+                        "deep_link": "https://t.me/gennis_office_bot?start=aB3xK9mZ",
+                        "instruction": "Telegram botga /start aB3xK9mZ yuboring",
+                    }
+                }
+            },
+        }
+    },
+)
 def generate_link_code(
     current_user: User = Depends(get_current_user),
 ):
@@ -36,18 +55,65 @@ def generate_link_code(
     }
 
 
-@router.post("/webhook")
+class TelegramWebhookBody(BaseModel):
+    model_config = {"json_schema_extra": {
+        "example": {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 42,
+                "from": {
+                    "id": 987654321,
+                    "first_name": "Jasur",
+                    "username": "jasur_dev",
+                },
+                "chat": {"id": 987654321, "type": "private"},
+                "date": 1712534400,
+                "text": "/start aB3xK9mZ",
+            },
+        }
+    }}
+
+    update_id: int = Field(..., example=123456789)
+    message: dict = Field(
+        default={},
+        example={
+            "message_id": 42,
+            "from": {"id": 987654321, "first_name": "Jasur"},
+            "chat": {"id": 987654321, "type": "private"},
+            "date": 1712534400,
+            "text": "/start aB3xK9mZ",
+        },
+    )
+
+
+@router.post(
+    "/webhook",
+    summary="Telegram webhook (called by Telegram servers)",
+    responses={
+        200: {
+            "description": "Always returns ok: true",
+            "content": {"application/json": {"example": {"ok": True}}},
+        },
+        403: {
+            "description": "Invalid webhook secret token",
+            "content": {"application/json": {"example": {"detail": "Forbidden"}}},
+        },
+    },
+)
 async def telegram_webhook(
-    request: Request,
-    x_telegram_bot_api_secret_token: str = Header(None),
+    body: TelegramWebhookBody,
+    x_telegram_bot_api_secret_token: str = Header(
+        None,
+        example="gennis_office_bot_secret_1001",
+        description="Must match TELEGRAM_WEBHOOK_SECRET env var",
+    ),
     db: Session = Depends(get_db),
 ):
     """Telegram calls this when the bot receives a message."""
     if x_telegram_bot_api_secret_token != settings.TELEGRAM_WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    body = await request.json()
-    message = body.get("message", {})
+    message = body.message
     text = (message.get("text") or "").strip()
     chat_id = message.get("chat", {}).get("id")
 
@@ -84,13 +150,48 @@ async def telegram_webhook(
     return {"ok": True}
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    summary="Check Telegram link status",
+    responses={
+        200: {
+            "description": "Whether the current user has linked their Telegram account",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "linked": {
+                            "summary": "Account linked",
+                            "value": {"linked": True, "telegram_id": 987654321},
+                        },
+                        "not_linked": {
+                            "summary": "Account not linked",
+                            "value": {"linked": False, "telegram_id": None},
+                        },
+                    }
+                }
+            },
+        }
+    },
+)
 def telegram_status(current_user: User = Depends(get_current_user)):
     """Check whether the current user has linked their Telegram account."""
     return {"linked": current_user.telegram_id is not None, "telegram_id": current_user.telegram_id}
 
 
-@router.delete("/unlink")
+@router.delete(
+    "/unlink",
+    summary="Unlink Telegram account",
+    responses={
+        200: {
+            "description": "Telegram account unlinked successfully",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Telegram hisobi uzildi"}
+                }
+            },
+        }
+    },
+)
 def unlink_telegram(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
