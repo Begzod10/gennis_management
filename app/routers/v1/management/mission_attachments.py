@@ -11,6 +11,8 @@ from app.schemas import MissionAttachmentOut
 from app.config import settings
 from app.external_models.gennis import GennisMission, GennisMissionAttachment
 from app.external_models.turon import TuronMission, TuronMissionAttachment
+from app.tasks import send_telegram_notification
+from app.services.telegram import tpl_attachment_added
 
 router = APIRouter(prefix="/missions/{mission_id}/attachments", tags=["Mission Attachments"])
 
@@ -115,6 +117,14 @@ async def upload_attachment(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_attachment_gennis(mission, attachment, gennis_db, creator_name=creator_name)
     _sync_attachment_turon(mission, attachment, turon_db, creator_name=creator_name)
+
+    msg = tpl_attachment_added(mission.title, creator_name or "—")
+    for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {creator_id}:
+        if uid:
+            u = db.query(User).filter(User.id == uid).first()
+            if u and u.telegram_id:
+                send_telegram_notification.delay(u.telegram_id, msg)
+
     out = MissionAttachmentOut.model_validate(attachment)
     out.file = _file_url(out.file)
     return out

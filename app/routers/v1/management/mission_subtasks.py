@@ -6,6 +6,8 @@ from app.models import Mission, MissionSubtask, User
 from app.schemas import MissionSubtaskCreate, MissionSubtaskUpdate, MissionSubtaskOut
 from app.external_models.gennis import GennisMission, GennisMissionSubtask
 from app.external_models.turon import TuronMission, TuronMissionSubtask
+from app.tasks import send_telegram_notification
+from app.services.telegram import tpl_subtask_added
 
 router = APIRouter(prefix="/missions/{mission_id}/subtasks", tags=["Mission Subtasks"])
 
@@ -93,6 +95,14 @@ def create_subtask(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_subtask_gennis(mission, subtask, gennis_db, creator_name=creator_name)
     _sync_subtask_turon(mission, subtask, turon_db, creator_name=creator_name)
+
+    msg = tpl_subtask_added(mission.title, subtask.title, creator_name or "—")
+    for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {creator_id}:
+        if uid:
+            u = db.query(User).filter(User.id == uid).first()
+            if u and u.telegram_id:
+                send_telegram_notification.delay(u.telegram_id, msg)
+
     return subtask
 
 

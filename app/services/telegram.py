@@ -101,3 +101,34 @@ def tpl_updated(title: str, changed_by: str) -> str:
         f"<b>{title}</b>\n"
         f"👤 O'zgartirgan: {changed_by}"
     )
+
+def tpl_comment_added(title: str, sender_name: str, text: str) -> str:
+    preview = text[:100] + "..." if len(text) > 100 else text
+    return (
+        f"💬 <b>Yangi izoh</b>\n\n"
+        f"<b>{title}</b>\n"
+        f"👤 {sender_name}: {preview}"
+    )
+
+def tpl_subtask_added(title: str, subtask_title: str, sender_name: str) -> str:
+    return (
+        f"☑️ <b>Yangi kichik vazifa qo'shildi</b>\n\n"
+        f"<b>{title}</b>\n"
+        f"📌 {subtask_title}\n"
+        f"👤 {sender_name}"
+    )
+
+def tpl_attachment_added(title: str, sender_name: str) -> str:
+    return (
+        f"📎 <b>Yangi fayl biriktirildi</b>\n\n"
+        f"<b>{title}</b>\n"
+        f"👤 {sender_name}"
+    )
+
+def tpl_proof_added(title: str, sender_name: str, comment: str) -> str:
+    body = f"\n💬 {comment}" if comment else ""
+    return (
+        f"📸 <b>Bajarish isboti yuklandi</b>\n\n"
+        f"<b>{title}</b>\n"
+        f"👤 {sender_name}{body}"
+    )

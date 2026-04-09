@@ -11,6 +11,8 @@ from app.schemas import MissionProofOut
 from app.external_models.gennis import GennisMission, GennisMissionProof
 from app.external_models.turon import TuronMission, TuronMissionProof
 from app.config import settings
+from app.tasks import send_telegram_notification
+from app.services.telegram import tpl_proof_added
 
 router = APIRouter(prefix="/missions/{mission_id}/proofs", tags=["Mission Proofs"])
 
@@ -115,6 +117,14 @@ async def upload_proof(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_proof_gennis(mission, proof, gennis_db, creator_name=creator_name)
     _sync_proof_turon(mission, proof, turon_db, creator_name=creator_name)
+
+    msg = tpl_proof_added(mission.title, creator_name or "—", comment)
+    for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {creator_id}:
+        if uid:
+            u = db.query(User).filter(User.id == uid).first()
+            if u and u.telegram_id:
+                send_telegram_notification.delay(u.telegram_id, msg)
+
     out = MissionProofOut.model_validate(proof)
     out.file = _file_url(out.file)
     return out

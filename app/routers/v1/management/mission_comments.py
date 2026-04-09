@@ -11,6 +11,8 @@ from app.schemas import MissionCommentOut
 from app.config import settings
 from app.external_models.gennis import GennisMission, GennisMissionComment
 from app.external_models.turon import TuronMission, TuronMissionComment
+from app.tasks import send_telegram_notification
+from app.services.telegram import tpl_comment_added
 
 router = APIRouter(prefix="/missions/{mission_id}/comments", tags=["Mission Comments"])
 
@@ -127,6 +129,14 @@ async def create_comment(
     creator_name = f"{user.name} {user.surname}".strip() if user else None
     _sync_comment_gennis(mission, comment, gennis_db, creator_name=creator_name)
     _sync_comment_turon(mission, comment, turon_db, creator_name=creator_name)
+
+    msg = tpl_comment_added(mission.title, creator_name or "—", text)
+    for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {user_id}:
+        if uid:
+            u = db.query(User).filter(User.id == uid).first()
+            if u and u.telegram_id:
+                send_telegram_notification.delay(u.telegram_id, msg)
+
     out = MissionCommentOut.model_validate(comment)
     out.attachment = _attachment_url(out.attachment)
     return out
