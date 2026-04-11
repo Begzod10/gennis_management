@@ -962,6 +962,7 @@ def redirect_mission(
     new_executor_name = f"{new_executor.name} {new_executor.surname}".strip()
     _tg(db, new_executor_id, tpl_redirected_new(mission.title, redirected_by_name))
     _tg(db, mission.creator_id, tpl_redirected_creator(mission.title, old_executor_name, new_executor_name))
+    _tg(db, mission.reviewer_id, tpl_redirected_creator(mission.title, old_executor_name, new_executor_name))
 
     return mission
 
