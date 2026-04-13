@@ -415,17 +415,21 @@ class MissionOut(BaseModel):
 class MissionSubtaskCreate(BaseModel):
     title: str
     order: int = 0
+    executor_id: Optional[int] = None
 
 
 class MissionSubtaskUpdate(BaseModel):
     title: Optional[str] = None
     is_done: Optional[bool] = None
     order: Optional[int] = None
+    executor_id: Optional[int] = None
 
 
 class MissionSubtaskOut(BaseModel):
     id: int
     mission_id: int
+    executor_id: Optional[int] = None
+    executor: Optional[UserOut] = None
     title: str
     is_done: bool
     order: int

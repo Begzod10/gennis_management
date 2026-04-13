@@ -187,6 +187,8 @@ def _validate_role_assignment(
     db: Session,
 ):
     """Raise 403 if the creator is not allowed to assign to executor."""
+    if creator.id == executor.id:
+        return  # anyone can assign to themselves
     if creator.role in OWNER_ROLES:
         return  # owner can assign to anyone
     if channel == "service_request":
@@ -680,7 +682,16 @@ def list_missions(
     if creator_id:
         q = q.filter(Mission.creator_id == creator_id)
     if executor_id:
-        q = q.filter(Mission.executor_id == executor_id)
+        from app.models import MissionSubtask
+        subtask_mission_ids = db.query(MissionSubtask.mission_id).filter(
+            MissionSubtask.executor_id == executor_id,
+            MissionSubtask.deleted == False,
+            MissionSubtask.is_done == False,
+        ).subquery()
+        q = q.filter(
+            (Mission.executor_id == executor_id) |
+            (Mission.id.in_(subtask_mission_ids))
+        )
     if reviewer_id:
         q = q.filter(Mission.reviewer_id == reviewer_id)
     if branch_id:

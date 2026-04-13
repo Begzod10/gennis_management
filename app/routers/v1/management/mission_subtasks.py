@@ -7,7 +7,7 @@ from app.schemas import MissionSubtaskCreate, MissionSubtaskUpdate, MissionSubta
 from app.external_models.gennis import GennisMission, GennisMissionSubtask
 from app.external_models.turon import TuronMission, TuronMissionSubtask
 from app.tasks import send_telegram_notification
-from app.services.telegram import tpl_subtask_added
+from app.services.telegram import tpl_subtask_added, tpl_subtask_assigned
 
 router = APIRouter(prefix="/missions/{mission_id}/subtasks", tags=["Mission Subtasks"])
 
@@ -103,6 +103,15 @@ def create_subtask(
             if u and u.telegram_id:
                 send_telegram_notification.delay(u.telegram_id, msg)
 
+    # Notify subtask executor if assigned and different from creator
+    if subtask.executor_id and subtask.executor_id != creator_id:
+        executor = db.query(User).filter(User.id == subtask.executor_id).first()
+        if executor and executor.telegram_id:
+            send_telegram_notification.delay(
+                executor.telegram_id,
+                tpl_subtask_assigned(mission.title, subtask.title, creator_name or "—"),
+            )
+
     return subtask
 
 
@@ -129,12 +138,24 @@ def update_subtask(
     ).first()
     if not subtask:
         raise HTTPException(status_code=404, detail="Subtask not found")
+    old_executor_id = subtask.executor_id
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(subtask, field, value)
     db.commit()
     db.refresh(subtask)
     _sync_subtask_gennis(mission, subtask, gennis_db)
     _sync_subtask_turon(mission, subtask, turon_db)
+
+    # Notify newly assigned executor
+    new_executor_id = subtask.executor_id
+    if new_executor_id and new_executor_id != old_executor_id:
+        executor = db.query(User).filter(User.id == new_executor_id).first()
+        if executor and executor.telegram_id:
+            send_telegram_notification.delay(
+                executor.telegram_id,
+                tpl_subtask_assigned(mission.title, subtask.title, "—"),
+            )
+
     return subtask
 
 

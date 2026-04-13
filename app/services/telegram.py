@@ -118,6 +118,14 @@ def tpl_subtask_added(title: str, subtask_title: str, sender_name: str) -> str:
         f"👤 {sender_name}"
     )
 
+def tpl_subtask_assigned(mission_title: str, subtask_title: str, assigned_by: str) -> str:
+    return (
+        f"☑️ <b>Kichik vazifa sizga tayinlandi</b>\n\n"
+        f"<b>{mission_title}</b>\n"
+        f"📌 {subtask_title}\n"
+        f"👤 Tayinlovchi: {assigned_by}"
+    )
+
 def tpl_attachment_added(title: str, sender_name: str) -> str:
     return (
         f"📎 <b>Yangi fayl biriktirildi</b>\n\n"

@@ -259,12 +259,14 @@ class MissionSubtask(Base):
 
     id = Column(BigInteger, primary_key=True, index=True)
     mission_id = Column(BigInteger, ForeignKey("mission.id"), nullable=False)
+    executor_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
     title = Column(String(255), nullable=False)
     is_done = Column(Boolean, default=False)
     order = Column(Integer, default=0)
     deleted = Column(Boolean, nullable=False, default=False)
 
     mission = relationship("Mission", back_populates="subtasks")
+    executor = relationship("User", foreign_keys=[executor_id])
 
 
 class MissionAttachment(Base):
