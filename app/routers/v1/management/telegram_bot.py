@@ -47,10 +47,12 @@ def generate_link_code(
     _redis.setex(f"tg_link:{code}", _LINK_TTL, str(current_user.id))
     bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "")
     deep_link = f"https://t.me/{bot_username}?start={code}" if bot_username else None
+    tg_link = f"tg://resolve?domain={bot_username}&start={code}" if bot_username else None
     return {
         "code": code,
         "expires_in": _LINK_TTL,
         "deep_link": deep_link,
+        "tg_link": tg_link,
         "instruction": f"Telegram botga /start {code} yuboring",
     }
 
