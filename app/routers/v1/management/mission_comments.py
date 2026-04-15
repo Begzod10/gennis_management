@@ -130,12 +130,15 @@ async def create_comment(
     _sync_comment_gennis(mission, comment, gennis_db, creator_name=creator_name)
     _sync_comment_turon(mission, comment, turon_db, creator_name=creator_name)
 
-    msg = tpl_comment_added(mission.title, creator_name or "—", text)
     for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {user_id}:
         if uid:
             u = db.query(User).filter(User.id == uid).first()
             if u and u.telegram_id:
-                send_telegram_notification.delay(u.telegram_id, msg)
+                recipient_name = f"{u.name} {u.surname}".strip() if u.surname else u.name
+                send_telegram_notification.delay(
+                    u.telegram_id,
+                    tpl_comment_added(recipient_name, mission.title, creator_name or "—", text),
+                )
 
     out = MissionCommentOut.model_validate(comment)
     out.attachment = _attachment_url(out.attachment)

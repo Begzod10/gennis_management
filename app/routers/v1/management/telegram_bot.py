@@ -118,6 +118,9 @@ async def telegram_webhook(
     message = body.message
     text = (message.get("text") or "").strip()
     chat_id = message.get("chat", {}).get("id")
+    tg_first_name = message.get("from", {}).get("first_name", "")
+    tg_last_name = message.get("from", {}).get("last_name", "")
+    tg_full_name = f"{tg_first_name} {tg_last_name}".strip() or tg_first_name
 
     if not chat_id:
         return {"ok": True}
@@ -127,7 +130,7 @@ async def telegram_webhook(
         if len(parts) < 2:
             send_telegram_notification.delay(
                 chat_id,
-                "Botdan foydalanish uchun management tizimidan kod oling.",
+                f"Salom, <b>{tg_full_name}</b>!\nBotdan foydalanish uchun management tizimidan kod oling.",
             )
             return {"ok": True}
 
@@ -144,9 +147,10 @@ async def telegram_webhook(
         user.telegram_id = chat_id
         db.commit()
         _redis.delete(f"tg_link:{code}")
+        full_name = f"{user.name} {user.surname}".strip() if user.surname else user.name
         send_telegram_notification.delay(
             chat_id,
-            f"✅ Hurmatli {user.name}, Telegram hisobingiz muvaffaqiyatli bog'landi!",
+            f"✅ Hurmatli <b>{full_name}</b>, Telegram hisobingiz muvaffaqiyatli bog'landi!",
         )
 
     return {"ok": True}

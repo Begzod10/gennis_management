@@ -118,12 +118,15 @@ async def upload_attachment(
     _sync_attachment_gennis(mission, attachment, gennis_db, creator_name=creator_name)
     _sync_attachment_turon(mission, attachment, turon_db, creator_name=creator_name)
 
-    msg = tpl_attachment_added(mission.title, creator_name or "—")
     for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {creator_id}:
         if uid:
             u = db.query(User).filter(User.id == uid).first()
             if u and u.telegram_id:
-                send_telegram_notification.delay(u.telegram_id, msg)
+                recipient_name = f"{u.name} {u.surname}".strip() if u.surname else u.name
+                send_telegram_notification.delay(
+                    u.telegram_id,
+                    tpl_attachment_added(recipient_name, mission.title, creator_name or "—"),
+                )
 
     out = MissionAttachmentOut.model_validate(attachment)
     out.file = _file_url(out.file)

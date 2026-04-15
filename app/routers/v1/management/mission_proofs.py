@@ -118,12 +118,15 @@ async def upload_proof(
     _sync_proof_gennis(mission, proof, gennis_db, creator_name=creator_name)
     _sync_proof_turon(mission, proof, turon_db, creator_name=creator_name)
 
-    msg = tpl_proof_added(mission.title, creator_name or "—", comment)
     for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {creator_id}:
         if uid:
             u = db.query(User).filter(User.id == uid).first()
             if u and u.telegram_id:
-                send_telegram_notification.delay(u.telegram_id, msg)
+                recipient_name = f"{u.name} {u.surname}".strip() if u.surname else u.name
+                send_telegram_notification.delay(
+                    u.telegram_id,
+                    tpl_proof_added(recipient_name, mission.title, creator_name or "—", comment),
+                )
 
     out = MissionProofOut.model_validate(proof)
     out.file = _file_url(out.file)

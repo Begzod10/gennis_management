@@ -96,20 +96,24 @@ def create_subtask(
     _sync_subtask_gennis(mission, subtask, gennis_db, creator_name=creator_name)
     _sync_subtask_turon(mission, subtask, turon_db, creator_name=creator_name)
 
-    msg = tpl_subtask_added(mission.title, subtask.title, creator_name or "—")
     for uid in {mission.executor_id, mission.reviewer_id, mission.creator_id} - {creator_id}:
         if uid:
             u = db.query(User).filter(User.id == uid).first()
             if u and u.telegram_id:
-                send_telegram_notification.delay(u.telegram_id, msg)
+                recipient_name = f"{u.name} {u.surname}".strip() if u.surname else u.name
+                send_telegram_notification.delay(
+                    u.telegram_id,
+                    tpl_subtask_added(recipient_name, mission.title, subtask.title, creator_name or "—"),
+                )
 
     # Notify subtask executor if assigned and different from creator
     if subtask.executor_id and subtask.executor_id != creator_id:
         executor = db.query(User).filter(User.id == subtask.executor_id).first()
         if executor and executor.telegram_id:
+            recipient_name = f"{executor.name} {executor.surname}".strip() if executor.surname else executor.name
             send_telegram_notification.delay(
                 executor.telegram_id,
-                tpl_subtask_assigned(mission.title, subtask.title, creator_name or "—"),
+                tpl_subtask_assigned(recipient_name, mission.title, subtask.title, creator_name or "—"),
             )
 
     return subtask
@@ -151,9 +155,10 @@ def update_subtask(
     if new_executor_id and new_executor_id != old_executor_id:
         executor = db.query(User).filter(User.id == new_executor_id).first()
         if executor and executor.telegram_id:
+            recipient_name = f"{executor.name} {executor.surname}".strip() if executor.surname else executor.name
             send_telegram_notification.delay(
                 executor.telegram_id,
-                tpl_subtask_assigned(mission.title, subtask.title, "—"),
+                tpl_subtask_assigned(recipient_name, mission.title, subtask.title, "—"),
             )
 
     return subtask

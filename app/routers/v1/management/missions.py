@@ -19,13 +19,15 @@ from app.services.telegram import (
 )
 
 
-def _tg(db: Session, user_id: Optional[int], text: str):
-    """Fire-and-forget Telegram notification to a management user."""
+def _tg(db: Session, user_id: Optional[int], tpl_fn, *args):
+    """Fire-and-forget Telegram notification to a management user.
+    Looks up the recipient's full name and passes it as first arg to tpl_fn."""
     if not user_id:
         return
     u = db.query(User).filter(User.id == user_id).first()
     if u and u.telegram_id:
-        send_telegram_notification.delay(u.telegram_id, text)
+        full_name = f"{u.name} {u.surname}".strip() if u.surname else u.name
+        send_telegram_notification.delay(u.telegram_id, tpl_fn(full_name, *args))
 
 
 # ── Role-based assignment rules ───────────────────────────────────────────────
@@ -545,8 +547,8 @@ def create_mission(
 
     creator_name = f"{creator.name} {creator.surname}".strip()
     for mission in created:
-        _tg(db, mission.executor_id, tpl_assigned(mission.title, mission.deadline, creator_name))
-        _tg(db, mission.reviewer_id, tpl_you_are_reviewer(mission.title, mission.deadline, creator_name))
+        _tg(db, mission.executor_id, tpl_assigned, mission.title, mission.deadline, creator_name)
+        _tg(db, mission.reviewer_id, tpl_you_are_reviewer, mission.title, mission.deadline, creator_name)
 
     return created
 
@@ -653,8 +655,8 @@ def create_bulk_missions(
 
     creator_name = f"{creator.name} {creator.surname}".strip()
     for mission in created:
-        _tg(db, mission.executor_id, tpl_assigned(mission.title, mission.deadline, creator_name))
-        _tg(db, mission.reviewer_id, tpl_you_are_reviewer(mission.title, mission.deadline, creator_name))
+        _tg(db, mission.executor_id, tpl_assigned, mission.title, mission.deadline, creator_name)
+        _tg(db, mission.reviewer_id, tpl_you_are_reviewer, mission.title, mission.deadline, creator_name)
 
     return created
 
@@ -813,15 +815,15 @@ def update_mission(
     if executor_changed:
         creator = db.query(User).filter(User.id == mission.creator_id).first()
         creator_name = f"{creator.name} {creator.surname}".strip() if creator else "Tizim"
-        _tg(db, mission.executor_id, tpl_assigned(mission.title, mission.deadline, creator_name))
+        _tg(db, mission.executor_id, tpl_assigned, mission.title, mission.deadline, creator_name)
     if reviewer_changed:
         creator = db.query(User).filter(User.id == mission.creator_id).first() if not executor_changed else creator
         creator_name = f"{creator.name} {creator.surname}".strip() if creator else "Tizim"
-        _tg(db, mission.reviewer_id, tpl_you_are_reviewer(mission.title, mission.deadline, creator_name))
+        _tg(db, mission.reviewer_id, tpl_you_are_reviewer, mission.title, mission.deadline, creator_name)
     if not executor_changed and not reviewer_changed:
         # General update — notify current executor and reviewer
-        _tg(db, mission.executor_id, tpl_updated(mission.title, changer_name))
-        _tg(db, mission.reviewer_id, tpl_updated(mission.title, changer_name))
+        _tg(db, mission.executor_id, tpl_updated, mission.title, changer_name)
+        _tg(db, mission.reviewer_id, tpl_updated, mission.title, changer_name)
 
     return mission
 
@@ -855,8 +857,8 @@ def delete_mission(
     _sync_delete(mission, gennis_db, turon_db)
     mission.deleted = True
     db.commit()
-    _tg(db, mission.executor_id, tpl_deleted(mission.title))
-    _tg(db, mission.reviewer_id, tpl_deleted(mission.title))
+    _tg(db, mission.executor_id, tpl_deleted, mission.title)
+    _tg(db, mission.reviewer_id, tpl_deleted, mission.title)
 
 
 @router.patch("/{mission_id}/status", response_model=MissionOut)
@@ -875,8 +877,8 @@ def change_status(
     _sync_to_gennis(mission, gennis_db)
     _sync_to_turon(mission, turon_db)
 
-    _tg(db, mission.executor_id, tpl_status_changed(mission.title, mission.status))
-    _tg(db, mission.reviewer_id, tpl_status_changed(mission.title, mission.status))
+    _tg(db, mission.executor_id, tpl_status_changed, mission.title, mission.status)
+    _tg(db, mission.reviewer_id, tpl_status_changed, mission.title, mission.status)
 
     return mission
 
@@ -896,10 +898,10 @@ def approve_mission(
 
     approver_name = _resolve_user_name(db, approver_id) or ""
     if data.approval_status.value == "approved":
-        _tg(db, mission.executor_id, tpl_approved(mission.title, approver_name))
-        _tg(db, mission.creator_id, tpl_approved(mission.title, approver_name))
+        _tg(db, mission.executor_id, tpl_approved, mission.title, approver_name)
+        _tg(db, mission.creator_id, tpl_approved, mission.title, approver_name)
     else:
-        _tg(db, mission.executor_id, tpl_declined(mission.title, approver_name))
+        _tg(db, mission.executor_id, tpl_declined, mission.title, approver_name)
 
     return mission
 
@@ -971,9 +973,9 @@ def redirect_mission(
     redirected_by_name = f"{redirected_by.name} {redirected_by.surname}".strip()
     old_executor_name = _resolve_user_name(db, old_executor_id) or ""
     new_executor_name = f"{new_executor.name} {new_executor.surname}".strip()
-    _tg(db, new_executor_id, tpl_redirected_new(mission.title, redirected_by_name))
-    _tg(db, mission.creator_id, tpl_redirected_creator(mission.title, old_executor_name, new_executor_name))
-    _tg(db, mission.reviewer_id, tpl_redirected_creator(mission.title, old_executor_name, new_executor_name))
+    _tg(db, new_executor_id, tpl_redirected_new, mission.title, redirected_by_name)
+    _tg(db, mission.creator_id, tpl_redirected_creator, mission.title, old_executor_name, new_executor_name)
+    _tg(db, mission.reviewer_id, tpl_redirected_creator, mission.title, old_executor_name, new_executor_name)
 
     return mission
 
@@ -1002,8 +1004,8 @@ def complete_mission(
     _sync_to_turon(mission, turon_db)
 
     executor_name = _resolve_user_name(db, mission.executor_id) or ""
-    _tg(db, mission.reviewer_id, tpl_completed(mission.title, executor_name, mission.finish_date))
-    _tg(db, mission.creator_id, tpl_completed(mission.title, executor_name, mission.finish_date))
+    _tg(db, mission.reviewer_id, tpl_completed, mission.title, executor_name, mission.finish_date)
+    _tg(db, mission.creator_id, tpl_completed, mission.title, executor_name, mission.finish_date)
 
     return mission
 
