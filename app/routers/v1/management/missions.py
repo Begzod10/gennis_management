@@ -679,6 +679,8 @@ def list_missions(
     q = db.query(Mission).filter(Mission.deleted == False)
     if status:
         q = q.filter(Mission.status == status)
+    else:
+        q = q.filter(Mission.status != "approved")
     if category:
         q = q.filter(Mission.category == category)
     if creator_id:

@@ -248,6 +248,7 @@ class TuronSchoolStudentsOut(BaseModel):
     total_dis: int
     total_discount: int
     total_with_discount: int
+    by_payment_type: List[PaymentTypeAmount] = []
 
 
 # ── Turon detail: teacher salaries ────────────────────────────────────────────

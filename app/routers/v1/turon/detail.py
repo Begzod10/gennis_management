@@ -276,6 +276,7 @@ def turon_school_students(
     # ── Build per-class structure ─────────────────────────────────────────────
     classes = {}
     total_sum = total_debt = total_remaining = total_donation = total_discount = 0
+    total_cash = total_bank = total_click = 0
 
     for row in rows:
         apm = row.AttendancePerMonth
@@ -302,6 +303,9 @@ def turon_school_students(
         total_donation  += donation
         total_discount  += paid
         total_sum       += payment
+        total_cash      += cash
+        total_bank      += bank
+        total_click     += click
 
         classes[class_key]["students"].append({
             "id":             apm.student_id,
@@ -340,6 +344,11 @@ def turon_school_students(
         "total_dis":            total_donation,
         "total_discount":       total_discount,
         "total_with_discount":  total_debt - (total_discount + total_donation),
+        "by_payment_type": [
+            {"payment_type": "cash",  "total": total_cash},
+            {"payment_type": "bank",  "total": total_bank},
+            {"payment_type": "click", "total": total_click},
+        ],
     }
 
 
