@@ -710,6 +710,14 @@ class ClassTimeTable(TuronBase):
     name = Column(String, nullable=True)
 
 
+class TuronCustomUser(TuronBase):
+    __tablename__ = "user_customuser"
+    __table_args__ = {"extend_existing": True}
+    id = Column(BigInteger, primary_key=True)
+    name = Column(String, nullable=True)
+    surname = Column(String, nullable=True)
+
+
 class TuronApiLog(TuronBase):
     __tablename__ = "api_log"
     id = Column(BigInteger, primary_key=True)

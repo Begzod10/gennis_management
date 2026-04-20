@@ -8,13 +8,116 @@ from app.database import get_gennis_db, get_turon_db, get_db
 from app.external_models import gennis as G
 from app.external_models import turon as T
 from app.models import Dividend, Investment, ApiLog
-from app.external_models.turon import TuronApiLog
+from app.external_models.turon import TuronApiLog, TuronCustomUser
+from app.models import User
 from app.schemas_stats import (
     ByPaymentType, GennisOverheadSummary, TuronOverheadSummary,
     GennisSummary, TuronSummary, OverviewOut,
     ApiUsageItem, ApiUsageByUserItem,
     TuronApiUsageItem, TuronApiUsageByUserItem,
+    SectionUsageItem,
 )
+
+# Section prefix rules — longest prefix must come first so matching is unambiguous
+_MANAGEMENT_SECTIONS = [
+    ("/api/v1/salary-months",            "Oylik maoshlar"),
+    ("/api/v1/salary-days",              "Kunlik maoshlar"),
+    ("/api/v1/system-models",            "Tizim modellari"),
+    ("/api/v1/missions",                 "Topshiriqlar"),
+    ("/api/v1/statistics",               "Statistika"),
+    ("/api/v1/projects",                 "Loyihalar"),
+    ("/api/v1/sections",                 "Bo'limlar"),
+    ("/api/v1/branches",                 "Filiallar"),
+    ("/api/v1/dividends",                "Dividendlar"),
+    ("/api/v1/investments",              "Investitsiyalar"),
+    ("/api/v1/notifications",            "Bildirishnomalar"),
+    ("/api/v1/combined",                 "Umumiy moliyaviy hisobot"),
+    ("/api/v1/calendar",                 "Taqvim"),
+    ("/api/v1/telegram",                 "Telegram bot"),
+    ("/api/v1/users",                    "Foydalanuvchilar"),
+    ("/api/v1/tags",                     "Teglar"),
+    ("/api/v1/jobs",                     "Lavozimlar"),
+    ("/api/v1/auth",                     "Kirish / Chiqish"),
+    ("/api/v1/turon/students",           "Turon — Talabalar"),
+    ("/api/v1/turon/teachers",           "Turon — O'qituvchilar"),
+    ("/api/v1/turon/classes",            "Turon — Guruhlar"),
+    ("/api/v1/turon/timetable",          "Turon — Dars jadvali"),
+    ("/api/v1/turon/terms",              "Turon — Semestrlar"),
+    ("/api/v1/turon",                    "Turon"),
+    ("/api/v1/gennis",                   "Gennis"),
+]
+
+_TURON_SECTIONS = [
+    ("/api/SchoolTimeTable/",   "Maktab dars jadvali"),
+    ("/api/Lesson_plan/",       "Dars rejalari"),
+    ("/api/TimeTable/",         "Dars jadvali"),
+    ("/api/Attendance/",        "Davomat"),
+    ("/api/Encashment/",        "Inkassatsiya"),
+    ("/api/Overhead/",          "Xarajatlar"),
+    ("/api/Capital/",           "Kapital"),
+    ("/api/Payments/",          "To'lovlar"),
+    ("/api/Students/",          "Talabalar"),
+    ("/api/Teachers/",          "O'qituvchilar"),
+    ("/api/Users/",             "Foydalanuvchilar"),
+    ("/api/parents/",           "Ota-onalar"),
+    ("/api/Group/",             "Guruhlar"),
+    ("/api/Class/",             "Sinflar"),
+    ("/api/Flow/",              "Oqimlar"),
+    ("/api/Subjects/",          "Fanlar"),
+    ("/api/Rooms/",             "Xonalar"),
+    ("/api/Branch/",            "Filiallar"),
+    ("/api/Location/",          "Joylashuvlar"),
+    ("/api/Tasks/",             "Topshiriqlar"),
+    ("/api/Observation/",       "Kuzatuvlar"),
+    ("/api/Lead/",              "Lidlar"),
+    ("/api/Books/",             "Kitoblar"),
+    ("/api/Calendar/",          "Taqvim"),
+    ("/api/Bot/",               "Bot"),
+    ("/api/Parties/",           "Partiyalar"),
+    ("/api/reports/",           "Hisobotlar"),
+    ("/api/surveys/",           "So'rovnomalar"),
+    ("/api/call/",              "Qo'ng'iroqlar"),
+    ("/api/v1/investor/",       "Investorlar"),
+    ("/api/Permissions/",       "Ruxsatnomalar"),
+    ("/api/System/",            "Tizim"),
+    ("/api/Language/",          "Tillar"),
+    ("/api/Ui/",                "Interfeys"),
+    ("/api/Mobile/",            "Mobil"),
+    ("/api/terms/",             "Semestrlar"),
+    ("/api/token/",             "Kirish / Chiqish"),
+    ("/api/get_user/",          "Foydalanuvchi ma'lumoti"),
+    ("/api/set_observer/",      "Kuzatuvchi belgilash"),
+    ("/api/update_group_datas/","Guruh ma'lumotlari"),
+    ("/api/get_group_datas/",   "Guruh ma'lumotlari"),
+]
+
+
+def _classify(path: str, rules: list) -> str:
+    for prefix, label in rules:
+        if path.startswith(prefix):
+            return label
+    return "Boshqa"
+
+
+def _aggregate_sections(rows, rules):
+    sections: dict[str, dict] = {}
+    for r in rows:
+        label = _classify(r.path, rules)
+        if label not in sections:
+            sections[label] = {"total": 0, "weighted_ms": 0.0}
+        sections[label]["total"] += r.total
+        sections[label]["weighted_ms"] += (r.avg_ms or 0) * r.total
+
+    grand_total = sum(v["total"] for v in sections.values()) or 1
+    result = []
+    for label, v in sections.items():
+        result.append({
+            "section": label,
+            "total_requests": v["total"],
+            "percentage": round(v["total"] / grand_total * 100, 1),
+            "avg_response_ms": round(v["weighted_ms"] / v["total"], 1) if v["total"] else 0.0,
+        })
+    return sorted(result, key=lambda x: x["total_requests"], reverse=True)
 
 router = APIRouter(prefix="/statistics", tags=["Statistics"])
 
@@ -41,11 +144,13 @@ def api_usage(
         q = q.filter(ApiLog.created_at <= to_date)
     rows = q.group_by(ApiLog.method, ApiLog.path).order_by(desc("total")).limit(limit).all()
 
+    grand_total = sum(r.total for r in rows) or 1
     return [
         {
             "method": r.method,
             "path": r.path,
             "total_requests": r.total,
+            "percentage": round(r.total / grand_total * 100, 1),
             "avg_response_ms": round(r.avg_ms or 0, 1),
         }
         for r in rows
@@ -62,14 +167,46 @@ def api_usage_by_user(
     """Request counts per user."""
     q = db.query(
         ApiLog.user_id,
+        User.name,
+        User.surname,
         func.count(ApiLog.id).label("total"),
-    ).filter(ApiLog.user_id.isnot(None))
+    ).outerjoin(User, User.id == ApiLog.user_id).filter(ApiLog.user_id.isnot(None))
     if from_date:
         q = q.filter(ApiLog.created_at >= from_date)
     if to_date:
         q = q.filter(ApiLog.created_at <= to_date)
-    rows = q.group_by(ApiLog.user_id).order_by(desc("total")).limit(limit).all()
-    return [{"user_id": r.user_id, "total_requests": r.total} for r in rows]
+    rows = q.group_by(ApiLog.user_id, User.name, User.surname).order_by(desc("total")).limit(limit).all()
+    grand_total = sum(r.total for r in rows) or 1
+    return [
+        {
+            "user_id": r.user_id,
+            "name": r.name,
+            "surname": r.surname,
+            "total_requests": r.total,
+            "percentage": round(r.total / grand_total * 100, 1),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/api-usage/by-section", response_model=List[SectionUsageItem], tags=["API Usage"])
+def api_usage_by_section(
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Total usage grouped by feature section (all mission routes combined, all salary routes combined, etc.)."""
+    q = db.query(
+        ApiLog.path,
+        func.count(ApiLog.id).label("total"),
+        func.avg(ApiLog.response_time_ms).label("avg_ms"),
+    )
+    if from_date:
+        q = q.filter(ApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(ApiLog.created_at <= to_date)
+    rows = q.group_by(ApiLog.path).all()
+    return _aggregate_sections(rows, _MANAGEMENT_SECTIONS)
 
 
 # ─── Turon API Usage ─────────────────────────────────────────────────────────
@@ -93,11 +230,13 @@ def turon_api_usage(
     if to_date:
         q = q.filter(TuronApiLog.created_at <= to_date)
     rows = q.group_by(TuronApiLog.method, TuronApiLog.path).order_by(desc("total")).limit(limit).all()
+    grand_total = sum(r.total for r in rows) or 1
     return [
         {
             "method": r.method,
             "path": r.path,
             "total_requests": r.total,
+            "percentage": round(r.total / grand_total * 100, 1),
             "avg_response_ms": round(r.avg_ms or 0, 1),
         }
         for r in rows
@@ -114,14 +253,46 @@ def turon_api_usage_by_user(
     """Request counts per user in Turon."""
     q = db.query(
         TuronApiLog.user_id,
+        TuronCustomUser.name,
+        TuronCustomUser.surname,
         func.count(TuronApiLog.id).label("total"),
-    ).filter(TuronApiLog.user_id.isnot(None))
+    ).outerjoin(TuronCustomUser, TuronCustomUser.id == TuronApiLog.user_id).filter(TuronApiLog.user_id.isnot(None))
     if from_date:
         q = q.filter(TuronApiLog.created_at >= from_date)
     if to_date:
         q = q.filter(TuronApiLog.created_at <= to_date)
-    rows = q.group_by(TuronApiLog.user_id).order_by(desc("total")).limit(limit).all()
-    return [{"user_id": r.user_id, "total_requests": r.total} for r in rows]
+    rows = q.group_by(TuronApiLog.user_id, TuronCustomUser.name, TuronCustomUser.surname).order_by(desc("total")).limit(limit).all()
+    grand_total = sum(r.total for r in rows) or 1
+    return [
+        {
+            "user_id": r.user_id,
+            "name": r.name,
+            "surname": r.surname,
+            "total_requests": r.total,
+            "percentage": round(r.total / grand_total * 100, 1),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/turon/api-usage/by-section", response_model=List[SectionUsageItem], tags=["API Usage"])
+def turon_api_usage_by_section(
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_turon_db),
+):
+    """Turon total usage grouped by feature section."""
+    q = db.query(
+        TuronApiLog.path,
+        func.count(TuronApiLog.id).label("total"),
+        func.avg(TuronApiLog.response_time_ms).label("avg_ms"),
+    )
+    if from_date:
+        q = q.filter(TuronApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(TuronApiLog.created_at <= to_date)
+    rows = q.group_by(TuronApiLog.path).all()
+    return _aggregate_sections(rows, _TURON_SECTIONS)
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────

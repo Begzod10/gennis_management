@@ -11,24 +11,39 @@ class ApiUsageItem(BaseModel):
     method: str
     path: str
     total_requests: int
+    percentage: float
     avg_response_ms: float
 
 
 class ApiUsageByUserItem(BaseModel):
     user_id: int
+    name: Optional[str]
+    surname: Optional[str]
     total_requests: int
+    percentage: float
 
 
 class TuronApiUsageItem(BaseModel):
     method: str
     path: str
     total_requests: int
+    percentage: float
     avg_response_ms: float
 
 
 class TuronApiUsageByUserItem(BaseModel):
     user_id: int
+    name: Optional[str]
+    surname: Optional[str]
     total_requests: int
+    percentage: float
+
+
+class SectionUsageItem(BaseModel):
+    section: str
+    total_requests: int
+    percentage: float
+    avg_response_ms: float
 
 
 # ── Common ────────────────────────────────────────────────────────────────────

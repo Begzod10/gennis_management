@@ -200,21 +200,34 @@
     .badge-PUT    { background: #2c1b0e; color: #f6ad55; }
 
     /* bar inside table */
-    .bar-cell { display: flex; align-items: center; gap: 10px; min-width: 140px; }
+    .bar-cell { display: flex; align-items: center; gap: 10px; min-width: 180px; }
     .bar-track {
       flex: 1;
-      height: 6px;
+      height: 8px;
       background: #2d3748;
-      border-radius: 3px;
+      border-radius: 4px;
       overflow: hidden;
     }
     .bar-fill {
       height: 100%;
-      border-radius: 3px;
+      border-radius: 4px;
       background: linear-gradient(90deg, #667eea, #764ba2);
-      transition: width .4s ease;
+      transition: width .5s ease;
     }
     .bar-num { font-size: 12px; color: #a0aec0; white-space: nowrap; }
+
+    /* percentage badge */
+    .pct-badge {
+      display: inline-block;
+      min-width: 52px;
+      text-align: right;
+      font-size: 15px;
+      font-weight: 700;
+      color: #f7fafc;
+    }
+    .pct-badge.high   { color: #68d391; }
+    .pct-badge.medium { color: #f6ad55; }
+    .pct-badge.low    { color: #718096; }
 
     .speed { font-size: 12px; }
     .speed.fast   { color: #68d391; }
@@ -366,6 +379,7 @@
                 <th>#</th>
                 <th>Bo'lim nomi</th>
                 <th>Tur</th>
+                <th>Ishlatilish foizi</th>
                 <th>Necha marta</th>
                 <th>Javob vaqti</th>
               </tr>
@@ -653,16 +667,21 @@
     });
   }
 
+  function pctClass(p) {
+    if (p >= 30) return 'high';
+    if (p >= 10) return 'medium';
+    return 'low';
+  }
+
   function renderTable() {
     qs('tbl-spinner').style.display = 'none';
     qs('tbl-all-wrap').style.display = 'block';
 
-    const maxCount = allData[0]?.total_requests || 1;
     const tbody = qs('tbl-all-body');
     tbody.innerHTML = '';
 
     allData.forEach((r, i) => {
-      const pct = Math.round((r.total_requests / maxCount) * 100);
+      const pct = r.percentage ?? 0;
       const sc = speedClass(r.avg_response_ms);
       tbody.insertAdjacentHTML('beforeend', `
         <tr>
@@ -675,16 +694,17 @@
           <td>
             <div class="bar-cell">
               <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-              <span class="bar-num">${r.total_requests.toLocaleString()}</span>
+              <span class="pct-badge ${pctClass(pct)}">${pct}%</span>
             </div>
           </td>
+          <td><span class="bar-num">${r.total_requests.toLocaleString()} marta</span></td>
           <td><span class="speed ${sc}">${speedLabel(r.avg_response_ms)} (${r.avg_response_ms} ms)</span></td>
         </tr>
       `);
     });
 
     if (!allData.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">Hozircha ma\'lumot yo\'q</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Hozircha ma\'lumot yo\'q</td></tr>';
     }
   }
 
