@@ -222,6 +222,30 @@ def api_usage_by_user(
     ]
 
 
+@router.get("/api-usage/unknown-paths", tags=["API Usage"])
+def api_usage_unknown_paths(
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Show paths that fall into 'Boshqa' — not matched by any section rule."""
+    q = db.query(
+        ApiLog.path,
+        func.count(ApiLog.id).label("total"),
+    )
+    if from_date:
+        q = q.filter(ApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(ApiLog.created_at < to_date + timedelta(days=1))
+    rows = q.group_by(ApiLog.path).order_by(desc("total")).all()
+
+    return [
+        {"path": r.path, "total_requests": r.total}
+        for r in rows
+        if _classify(r.path, _MANAGEMENT_SECTIONS) == "Boshqa"
+    ]
+
+
 @router.get("/api-usage/by-section", response_model=List[SectionUsageItem], tags=["API Usage"])
 def api_usage_by_section(
     from_date: Optional[date] = Query(None),
