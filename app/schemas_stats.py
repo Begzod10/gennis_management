@@ -46,6 +46,22 @@ class SectionUsageItem(BaseModel):
     avg_response_ms: float
 
 
+class GennisApiUsageItem(BaseModel):
+    method: str
+    path: str
+    total_requests: int
+    percentage: float
+    avg_response_ms: float
+
+
+class GennisApiUsageByUserItem(BaseModel):
+    user_id: int
+    name: Optional[str]
+    surname: Optional[str]
+    total_requests: int
+    percentage: float
+
+
 # ── Common ────────────────────────────────────────────────────────────────────
 
 class BranchItem(BaseModel):

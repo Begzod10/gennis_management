@@ -2,7 +2,7 @@
 Read-only SQLAlchemy models mapped to the Gennis education center database.
 Only columns needed for statistics are declared.
 """
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, ForeignKey, Text
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, ForeignKey, Text, Float
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -403,3 +403,14 @@ class Overhead(GennisBase):
     location_id = Column(Integer, ForeignKey("locations.id"))
     calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
+
+
+class GennisApiLog(GennisBase):
+    __tablename__ = "api_log"
+    id = Column(Integer, primary_key=True)
+    method = Column(String(10), nullable=False)
+    path = Column(String(500), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    user_id = Column(Integer, nullable=True)
+    response_time_ms = Column(Float, nullable=True)
+    created_at = Column(DateTime, nullable=True)

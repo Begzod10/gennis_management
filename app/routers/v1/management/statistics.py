@@ -9,6 +9,7 @@ from app.external_models import gennis as G
 from app.external_models import turon as T
 from app.models import Dividend, Investment, ApiLog
 from app.external_models.turon import TuronApiLog, TuronCustomUser
+from app.external_models.gennis import GennisApiLog, Users as GennisUsers
 from app.models import User
 from app.schemas_stats import (
     ByPaymentType, GennisOverheadSummary, TuronOverheadSummary,
@@ -16,6 +17,7 @@ from app.schemas_stats import (
     ApiUsageItem, ApiUsageByUserItem,
     TuronApiUsageItem, TuronApiUsageByUserItem,
     SectionUsageItem,
+    GennisApiUsageItem, GennisApiUsageByUserItem,
 )
 
 # Section prefix rules — longest prefix must come first so matching is unambiguous
@@ -45,6 +47,37 @@ _MANAGEMENT_SECTIONS = [
     ("/api/v1/turon/terms",              "Turon — Semestrlar"),
     ("/api/v1/turon",                    "Turon"),
     ("/api/v1/gennis",                   "Gennis"),
+]
+
+_GENNIS_SECTIONS = [
+    ("/api/missions",            "Topshiriqlar"),
+    ("/api/comment",             "Topshiriq — Izohlar"),
+    ("/api/proofs",              "Topshiriq — Hisobotlar"),
+    ("/api/attachments",         "Topshiriq — Fayllar"),
+    ("/api/subtasks",            "Topshiriq — Kichik vazifalar"),
+    ("/api/student",             "Talabalar"),
+    ("/api/teacher/assistent",   "Assistentlar"),
+    ("/api/teacher",             "O'qituvchilar"),
+    ("/api/account",             "Moliya / Hisob"),
+    ("/api/group_classroom",     "Guruh sinf"),
+    ("/api/create_group",        "Guruh yaratish"),
+    ("/api/group",               "Guruhlar"),
+    ("/api/time_table",          "Dars jadvali"),
+    ("/api/school",              "Maktab"),
+    ("/api/lead",                "Lidlar"),
+    ("/api/book",                "Kitoblar"),
+    ("/api/parent",              "Ota-onalar"),
+    ("/api/mobile",              "Mobil"),
+    ("/api/home_page",           "Bosh sahifa"),
+    ("/api/reports",             "Hisobotlar"),
+    ("/api/room",                "Xonalar"),
+    ("/api/base",                "Asosiy"),
+    ("/api/checks",              "Tekshiruvlar"),
+    ("/api/programmers",         "Dasturchilar"),
+    ("/api/bot",                 "Bot"),
+    ("/api/classroom",           "Sinf xonasi"),
+    ("/api/chat-analyzer",       "Chat tahlili"),
+    ("/api",                     "Boshqa"),
 ]
 
 _TURON_SECTIONS = [
@@ -293,6 +326,92 @@ def turon_api_usage_by_section(
         q = q.filter(TuronApiLog.created_at <= to_date)
     rows = q.group_by(TuronApiLog.path).all()
     return _aggregate_sections(rows, _TURON_SECTIONS)
+
+
+# ─── Gennis API Usage ─────────────────────────────────────────────────────────
+
+@router.get("/gennis/api-usage", response_model=List[GennisApiUsageItem], tags=["API Usage"])
+def gennis_api_usage(
+    limit: int = Query(50, ge=1, le=200),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_gennis_db),
+):
+    """Most and least used Gennis API endpoints by request count."""
+    q = db.query(
+        GennisApiLog.method,
+        GennisApiLog.path,
+        func.count(GennisApiLog.id).label("total"),
+        func.avg(GennisApiLog.response_time_ms).label("avg_ms"),
+    )
+    if from_date:
+        q = q.filter(GennisApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(GennisApiLog.created_at <= to_date)
+    rows = q.group_by(GennisApiLog.method, GennisApiLog.path).order_by(desc("total")).limit(limit).all()
+    grand_total = sum(r.total for r in rows) or 1
+    return [
+        {
+            "method": r.method,
+            "path": r.path,
+            "total_requests": r.total,
+            "percentage": round(r.total / grand_total * 100, 1),
+            "avg_response_ms": round(r.avg_ms or 0, 1),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/gennis/api-usage/by-user", response_model=List[GennisApiUsageByUserItem], tags=["API Usage"])
+def gennis_api_usage_by_user(
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_gennis_db),
+):
+    """Request counts per user in Gennis."""
+    q = db.query(
+        GennisApiLog.user_id,
+        GennisUsers.name,
+        GennisUsers.surname,
+        func.count(GennisApiLog.id).label("total"),
+    ).outerjoin(GennisUsers, GennisUsers.id == GennisApiLog.user_id).filter(GennisApiLog.user_id.isnot(None))
+    if from_date:
+        q = q.filter(GennisApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(GennisApiLog.created_at <= to_date)
+    rows = q.group_by(GennisApiLog.user_id, GennisUsers.name, GennisUsers.surname).order_by(desc("total")).limit(limit).all()
+    grand_total = sum(r.total for r in rows) or 1
+    return [
+        {
+            "user_id": r.user_id,
+            "name": r.name,
+            "surname": r.surname,
+            "total_requests": r.total,
+            "percentage": round(r.total / grand_total * 100, 1),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/gennis/api-usage/by-section", response_model=List[SectionUsageItem], tags=["API Usage"])
+def gennis_api_usage_by_section(
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_gennis_db),
+):
+    """Gennis total usage grouped by feature section."""
+    q = db.query(
+        GennisApiLog.path,
+        func.count(GennisApiLog.id).label("total"),
+        func.avg(GennisApiLog.response_time_ms).label("avg_ms"),
+    )
+    if from_date:
+        q = q.filter(GennisApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(GennisApiLog.created_at <= to_date)
+    rows = q.group_by(GennisApiLog.path).all()
+    return _aggregate_sections(rows, _GENNIS_SECTIONS)
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
