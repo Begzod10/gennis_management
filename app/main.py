@@ -1,4 +1,5 @@
 import time
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,8 @@ from sqlalchemy import text
 from .config import settings
 from .database import engine, gennis_write_engine, turon_write_engine, SessionLocal
 from .models import ApiLog
+
+_log = logging.getLogger(__name__)
 from .external_models.gennis import GennisDividend, GennisInvestment
 from .external_models.turon import TuronDividend, TuronInvestment
 from .routers.v1 import auth
@@ -89,6 +92,7 @@ async def log_requests(request: Request, call_next):
         except JWTError:
             pass
 
+    db = None
     try:
         db = SessionLocal()
         db.add(ApiLog(
@@ -99,10 +103,13 @@ async def log_requests(request: Request, call_next):
             response_time_ms=round(elapsed_ms, 2),
         ))
         db.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        _log.error(f"ApiLog write failed: {e}")
+        if db:
+            db.rollback()
     finally:
-        db.close()
+        if db:
+            db.close()
 
     return response
 
