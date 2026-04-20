@@ -19,7 +19,7 @@ router = APIRouter(prefix="/statistics", tags=["Statistics"])
 
 # ─── API Usage ────────────────────────────────────────────────────────────────
 
-@router.get("/api-usage", response_model=List[ApiUsageItem])
+@router.get("/api-usage", response_model=List[ApiUsageItem], tags=["API Usage"])
 def api_usage(
     limit: int = Query(50, ge=1, le=200),
     from_date: Optional[date] = Query(None),
@@ -50,7 +50,7 @@ def api_usage(
     ]
 
 
-@router.get("/api-usage/by-user", response_model=List[ApiUsageByUserItem])
+@router.get("/api-usage/by-user", response_model=List[ApiUsageByUserItem], tags=["API Usage"])
 def api_usage_by_user(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
