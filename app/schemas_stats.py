@@ -19,6 +19,18 @@ class ApiUsageByUserItem(BaseModel):
     total_requests: int
 
 
+class TuronApiUsageItem(BaseModel):
+    method: str
+    path: str
+    total_requests: int
+    avg_response_ms: float
+
+
+class TuronApiUsageByUserItem(BaseModel):
+    user_id: int
+    total_requests: int
+
+
 # ── Common ────────────────────────────────────────────────────────────────────
 
 class BranchItem(BaseModel):

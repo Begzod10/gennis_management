@@ -8,10 +8,12 @@ from app.database import get_gennis_db, get_turon_db, get_db
 from app.external_models import gennis as G
 from app.external_models import turon as T
 from app.models import Dividend, Investment, ApiLog
+from app.external_models.turon import TuronApiLog
 from app.schemas_stats import (
     ByPaymentType, GennisOverheadSummary, TuronOverheadSummary,
     GennisSummary, TuronSummary, OverviewOut,
     ApiUsageItem, ApiUsageByUserItem,
+    TuronApiUsageItem, TuronApiUsageByUserItem,
 )
 
 router = APIRouter(prefix="/statistics", tags=["Statistics"])
@@ -67,6 +69,58 @@ def api_usage_by_user(
     if to_date:
         q = q.filter(ApiLog.created_at <= to_date)
     rows = q.group_by(ApiLog.user_id).order_by(desc("total")).limit(limit).all()
+    return [{"user_id": r.user_id, "total_requests": r.total} for r in rows]
+
+
+# ─── Turon API Usage ─────────────────────────────────────────────────────────
+
+@router.get("/turon/api-usage", response_model=List[TuronApiUsageItem], tags=["API Usage"])
+def turon_api_usage(
+    limit: int = Query(50, ge=1, le=200),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_turon_db),
+):
+    """Most and least used Turon API endpoints by request count."""
+    q = db.query(
+        TuronApiLog.method,
+        TuronApiLog.path,
+        func.count(TuronApiLog.id).label("total"),
+        func.avg(TuronApiLog.response_time_ms).label("avg_ms"),
+    )
+    if from_date:
+        q = q.filter(TuronApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(TuronApiLog.created_at <= to_date)
+    rows = q.group_by(TuronApiLog.method, TuronApiLog.path).order_by(desc("total")).limit(limit).all()
+    return [
+        {
+            "method": r.method,
+            "path": r.path,
+            "total_requests": r.total,
+            "avg_response_ms": round(r.avg_ms or 0, 1),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/turon/api-usage/by-user", response_model=List[TuronApiUsageByUserItem], tags=["API Usage"])
+def turon_api_usage_by_user(
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_turon_db),
+):
+    """Request counts per user in Turon."""
+    q = db.query(
+        TuronApiLog.user_id,
+        func.count(TuronApiLog.id).label("total"),
+    ).filter(TuronApiLog.user_id.isnot(None))
+    if from_date:
+        q = q.filter(TuronApiLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(TuronApiLog.created_at <= to_date)
+    rows = q.group_by(TuronApiLog.user_id).order_by(desc("total")).limit(limit).all()
     return [{"user_id": r.user_id, "total_requests": r.total} for r in rows]
 
 

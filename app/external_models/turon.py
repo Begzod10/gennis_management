@@ -3,7 +3,7 @@ Read-only SQLAlchemy models mapped to the Turon school (Django) database.
 Django auto-generates table names as {app_label}_{model_name_lowercase}.
 Only columns needed for statistics are declared.
 """
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, Table, Text, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, Table, Text, JSON, Float
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -708,3 +708,14 @@ class ClassTimeTable(TuronBase):
     subject_id = Column(BigInteger, ForeignKey("subjects_subject.id"), nullable=True)
     date = Column(Date, nullable=True)
     name = Column(String, nullable=True)
+
+
+class TuronApiLog(TuronBase):
+    __tablename__ = "api_log"
+    id = Column(BigInteger, primary_key=True)
+    method = Column(String(10), nullable=False)
+    path = Column(String(500), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    user_id = Column(BigInteger, nullable=True)
+    response_time_ms = Column(Float, nullable=True)
+    created_at = Column(DateTime, nullable=True)
