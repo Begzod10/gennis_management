@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, desc
 from typing import Optional, List
-from datetime import date
+from datetime import date, timedelta
 
 from app.database import get_gennis_db, get_turon_db, get_db
 from app.external_models import gennis as G
@@ -174,7 +174,7 @@ def api_usage(
     if from_date:
         q = q.filter(ApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(ApiLog.created_at <= to_date)
+        q = q.filter(ApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(ApiLog.method, ApiLog.path).order_by(desc("total")).limit(limit).all()
 
     grand_total = sum(r.total for r in rows) or 1
@@ -207,7 +207,7 @@ def api_usage_by_user(
     if from_date:
         q = q.filter(ApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(ApiLog.created_at <= to_date)
+        q = q.filter(ApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(ApiLog.user_id, User.name, User.surname).order_by(desc("total")).limit(limit).all()
     grand_total = sum(r.total for r in rows) or 1
     return [
@@ -237,7 +237,7 @@ def api_usage_by_section(
     if from_date:
         q = q.filter(ApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(ApiLog.created_at <= to_date)
+        q = q.filter(ApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(ApiLog.path).all()
     return _aggregate_sections(rows, _MANAGEMENT_SECTIONS)
 
@@ -261,7 +261,7 @@ def turon_api_usage(
     if from_date:
         q = q.filter(TuronApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(TuronApiLog.created_at <= to_date)
+        q = q.filter(TuronApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(TuronApiLog.method, TuronApiLog.path).order_by(desc("total")).limit(limit).all()
     grand_total = sum(r.total for r in rows) or 1
     return [
@@ -293,7 +293,7 @@ def turon_api_usage_by_user(
     if from_date:
         q = q.filter(TuronApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(TuronApiLog.created_at <= to_date)
+        q = q.filter(TuronApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(TuronApiLog.user_id, TuronCustomUser.name, TuronCustomUser.surname).order_by(desc("total")).limit(limit).all()
     grand_total = sum(r.total for r in rows) or 1
     return [
@@ -323,7 +323,7 @@ def turon_api_usage_by_section(
     if from_date:
         q = q.filter(TuronApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(TuronApiLog.created_at <= to_date)
+        q = q.filter(TuronApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(TuronApiLog.path).all()
     return _aggregate_sections(rows, _TURON_SECTIONS)
 
@@ -347,7 +347,7 @@ def gennis_api_usage(
     if from_date:
         q = q.filter(GennisApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(GennisApiLog.created_at <= to_date)
+        q = q.filter(GennisApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(GennisApiLog.method, GennisApiLog.path).order_by(desc("total")).limit(limit).all()
     grand_total = sum(r.total for r in rows) or 1
     return [
@@ -379,7 +379,7 @@ def gennis_api_usage_by_user(
     if from_date:
         q = q.filter(GennisApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(GennisApiLog.created_at <= to_date)
+        q = q.filter(GennisApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(GennisApiLog.user_id, GennisUsers.name, GennisUsers.surname).order_by(desc("total")).limit(limit).all()
     grand_total = sum(r.total for r in rows) or 1
     return [
@@ -409,7 +409,7 @@ def gennis_api_usage_by_section(
     if from_date:
         q = q.filter(GennisApiLog.created_at >= from_date)
     if to_date:
-        q = q.filter(GennisApiLog.created_at <= to_date)
+        q = q.filter(GennisApiLog.created_at < to_date + timedelta(days=1))
     rows = q.group_by(GennisApiLog.path).all()
     return _aggregate_sections(rows, _GENNIS_SECTIONS)
 
