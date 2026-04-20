@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tizim faolligi — Gennis Management</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1a1f2e 0%, #16213e 100%);
+      border-bottom: 1px solid #2d3748;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    header .logo {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+
+    header h1 { font-size: 20px; font-weight: 700; color: #f7fafc; }
+    header p  { font-size: 13px; color: #718096; margin-top: 2px; }
+
+    .filters {
+      background: #1a1f2e;
+      border-bottom: 1px solid #2d3748;
+      padding: 14px 32px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .filters label { font-size: 13px; color: #a0aec0; }
+
+    .filters input[type="date"] {
+      background: #2d3748;
+      border: 1px solid #4a5568;
+      color: #e2e8f0;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .filters input[type="date"]:focus { border-color: #667eea; }
+
+    .btn {
+      padding: 7px 18px;
+      border-radius: 6px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+    .btn-ghost   { background: #2d3748; color: #a0aec0; }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* ── stat cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 20px 22px;
+    }
+
+    .card .label {
+      font-size: 12px;
+      color: #718096;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #f7fafc;
+    }
+
+    .card .sub {
+      font-size: 12px;
+      color: #a0aec0;
+      margin-top: 4px;
+    }
+
+    .card.accent-green  .value { color: #68d391; }
+    .card.accent-blue   .value { color: #63b3ed; }
+    .card.accent-purple .value { color: #b794f4; }
+    .card.accent-orange .value { color: #f6ad55; }
+
+    /* ── panels ── */
+    .panel {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 16px 22px;
+      border-bottom: 1px solid #2d3748;
+      font-size: 14px;
+      font-weight: 600;
+      color: #f7fafc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-body { padding: 22px; }
+
+    /* ── chart row ── */
+    .chart-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .chart-row { grid-template-columns: 1fr; }
+    }
+
+    canvas { max-height: 280px; }
+
+    /* ── table ── */
+    .tbl-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      color: #718096;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      border-bottom: 1px solid #2d3748;
+    }
+
+    td {
+      padding: 11px 14px;
+      border-bottom: 1px solid #1e2535;
+      color: #cbd5e0;
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #232b3e; }
+
+    /* method badge */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .badge-GET    { background: #1c4532; color: #68d391; }
+    .badge-POST   { background: #1a365d; color: #63b3ed; }
+    .badge-PATCH  { background: #322659; color: #b794f4; }
+    .badge-DELETE { background: #63171b; color: #fc8181; }
+    .badge-PUT    { background: #2c1b0e; color: #f6ad55; }
+
+    /* bar inside table */
+    .bar-cell { display: flex; align-items: center; gap: 10px; min-width: 140px; }
+    .bar-track {
+      flex: 1;
+      height: 6px;
+      background: #2d3748;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width .4s ease;
+    }
+    .bar-num { font-size: 12px; color: #a0aec0; white-space: nowrap; }
+
+    .speed { font-size: 12px; }
+    .speed.fast   { color: #68d391; }
+    .speed.medium { color: #f6ad55; }
+    .speed.slow   { color: #fc8181; }
+
+    /* tabs */
+    .tabs { display: flex; gap: 4px; padding: 16px 22px 0; }
+    .tab {
+      padding: 8px 16px;
+      border-radius: 8px 8px 0 0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #718096;
+      border: 1px solid transparent;
+      border-bottom: none;
+      background: transparent;
+    }
+    .tab.active {
+      color: #f7fafc;
+      background: #232b3e;
+      border-color: #2d3748;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* empty state */
+    .empty {
+      text-align: center;
+      padding: 48px;
+      color: #4a5568;
+      font-size: 14px;
+    }
+
+    /* spinner */
+    .spinner {
+      display: flex;
+      justify-content: center;
+      padding: 40px;
+    }
+    .spinner::after {
+      content: '';
+      width: 32px; height: 32px;
+      border: 3px solid #2d3748;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* friendly path */
+    .path-cell { font-family: 'Courier New', monospace; font-size: 12px; color: #a0aec0; }
+
+    /* unused section */
+    .unused-chip {
+      display: inline-block;
+      background: #2d1515;
+      color: #fc8181;
+      border: 1px solid #63171b;
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      margin: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📊</div>
+  <div>
+    <h1>Tizim faolligi</h1>
+    <p>Qaysi bo'limlar ko'proq ishlatilmoqda</p>
+  </div>
+</header>
+
+<div class="filters">
+  <label>Dan:</label>
+  <input type="date" id="from_date">
+  <label>Gacha:</label>
+  <input type="date" id="to_date">
+  <button class="btn btn-primary" onclick="loadAll()">🔍 Ko'rsatish</button>
+  <button class="btn btn-ghost" onclick="clearDates()">Tozalash</button>
+  <span id="status-msg" style="font-size:12px;color:#718096;margin-left:8px;"></span>
+</div>
+
+<main>
+
+  <!-- Summary cards -->
+  <div class="cards" id="cards">
+    <div class="card accent-blue">
+      <div class="label">Jami so'rovlar</div>
+      <div class="value" id="card-total">—</div>
+      <div class="sub">barcha vaqt uchun</div>
+    </div>
+    <div class="card accent-green">
+      <div class="label">Eng ko'p ishlatiladigan</div>
+      <div class="value" id="card-top">—</div>
+      <div class="sub" id="card-top-count"></div>
+    </div>
+    <div class="card accent-purple">
+      <div class="label">O'rtacha javob vaqti</div>
+      <div class="value" id="card-avg">—</div>
+      <div class="sub">millisekund</div>
+    </div>
+    <div class="card accent-orange">
+      <div class="label">Faol foydalanuvchilar</div>
+      <div class="value" id="card-users">—</div>
+      <div class="sub">turli xil</div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="chart-row">
+    <div class="panel">
+      <div class="panel-header">📈 Top 10 — eng ko'p ishlatiladigan bo'limlar</div>
+      <div class="panel-body">
+        <div id="bar-spinner" class="spinner"></div>
+        <canvas id="barChart" style="display:none"></canvas>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">🥧 So'rov turlari</div>
+      <div class="panel-body">
+        <div id="pie-spinner" class="spinner"></div>
+        <canvas id="pieChart" style="display:none"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detailed table -->
+  <div class="panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('all')">Barcha so'rovlar</div>
+      <div class="tab" onclick="switchTab('unused')">Kam ishlatilganlar</div>
+      <div class="tab" onclick="switchTab('slow')">Sekin javob beradiganlar</div>
+      <div class="tab" onclick="switchTab('users')">Foydalanuvchilar</div>
+    </div>
+
+    <div id="tab-all" class="tab-content active">
+      <div class="panel-body">
+        <div id="tbl-spinner" class="spinner"></div>
+        <div class="tbl-wrap" id="tbl-all-wrap" style="display:none">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Bo'lim nomi</th>
+                <th>Tur</th>
+                <th>Necha marta</th>
+                <th>Javob vaqti</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-all-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-unused" class="tab-content">
+      <div class="panel-body">
+        <p style="font-size:13px;color:#718096;margin-bottom:16px;">
+          Bu bo'limlar juda kam yoki hech ishlatilmagan:
+        </p>
+        <div id="unused-chips"></div>
+      </div>
+    </div>
+
+    <div id="tab-slow" class="tab-content">
+      <div class="panel-body">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Bo'lim nomi</th>
+                <th>Javob vaqti</th>
+                <th>Necha marta</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-slow-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-users" class="tab-content">
+      <div class="panel-body">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Foydalanuvchi ID</th>
+                <th>So'rovlar soni</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-users-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  let barChartInst = null;
+  let pieChartInst = null;
+  let allData = [];
+  let userData = [];
+
+  const SECTION_NAMES = {
+    // Auth
+    '/api/v1/auth/login':    'Tizimga kirish',
+    '/api/v1/auth/logout':   'Tizimdan chiqish',
+    '/api/v1/auth/refresh':  'Token yangilash',
+    '/api/v1/auth/register': "Ro'yxatdan o'tish",
+    '/api/v1/auth/google':   'Google orqali kirish',
+    '/api/v1/auth/me':       'Mening profilim',
+    '/api/v1/auth':          'Kirish / Chiqish',
+
+    // Missions
+    '/api/v1/missions':                    'Topshiriqlar',
+
+    // Mission sub-resources (longer paths first so they match before /missions)
+    '/api/v1/missions/':                   'Topshiriqlar',
+
+    // Users
+    '/api/v1/users': 'Foydalanuvchilar',
+
+    // Salary
+    '/api/v1/salary-months': 'Oylik maoshlar',
+    '/api/v1/salary-days':   'Kunlik maoshlar',
+
+    // Projects & Sections
+    '/api/v1/projects':  'Loyihalar',
+    '/api/v1/sections':  "Bo'limlar",
+
+    // Finance
+    '/api/v1/dividends':   'Dividendlar',
+    '/api/v1/investments': 'Investitsiyalar',
+    '/api/v1/combined':    'Umumiy moliyaviy hisobot',
+    '/api/v1/statistics':  'Statistika',
+
+    // Reference data
+    '/api/v1/tags':          'Teglar',
+    '/api/v1/branches':      'Filiallar',
+    '/api/v1/jobs':          'Lavozimlar',
+    '/api/v1/system-models': 'Tizim modellari',
+
+    // Notifications & Telegram
+    '/api/v1/notifications': 'Bildirishnomalar',
+    '/api/v1/telegram':      'Telegram bot',
+
+    // Calendar
+    '/api/v1/calendar': 'Taqvim',
+
+    // Turon
+    '/api/v1/turon/students':  'Turon — Talabalar',
+    '/api/v1/turon/teachers':  'Turon — O\'qituvchilar',
+    '/api/v1/turon/classes':   'Turon — Guruhlar',
+    '/api/v1/turon/timetable': 'Turon — Dars jadvali',
+    '/api/v1/turon/terms':     'Turon — Semestrlar',
+    '/api/v1/turon':           'Turon',
+
+    // Gennis
+    '/api/v1/gennis': 'Gennis',
+  };
+
+  function friendlyName(path) {
+    // Handle nested mission sub-resources: /api/v1/missions/{id}/subtasks etc.
+    const missionSub = path.match(/^\/api\/v1\/missions\/\d+\/(subtasks|comments|attachments|proofs)/);
+    if (missionSub) {
+      const map = { subtasks: 'Topshiriq — Kichik vazifalar', comments: 'Topshiriq — Izohlar', attachments: 'Topshiriq — Fayllar', proofs: 'Topshiriq — Hisobotlar' };
+      return map[missionSub[1]] || 'Topshiriqlar';
+    }
+    // Longest prefix match
+    let best = null, bestLen = 0;
+    for (const [prefix, name] of Object.entries(SECTION_NAMES)) {
+      if (path.startsWith(prefix) && prefix.length > bestLen) {
+        best = name; bestLen = prefix.length;
+      }
+    }
+    if (best) return best;
+    return path.replace('/api/v1/', '').split('/')[0] || path;
+  }
+
+  function speedClass(ms) {
+    if (ms < 100) return 'fast';
+    if (ms < 400) return 'medium';
+    return 'slow';
+  }
+
+  function speedLabel(ms) {
+    if (ms < 100) return '✅ Tez';
+    if (ms < 400) return '⚠️ O\'rtacha';
+    return '🐢 Sekin';
+  }
+
+  function qs(id) { return document.getElementById(id); }
+
+  function clearDates() {
+    qs('from_date').value = '';
+    qs('to_date').value = '';
+    loadAll();
+  }
+
+  function buildParams() {
+    const p = new URLSearchParams({ limit: 200 });
+    const f = qs('from_date').value;
+    const t = qs('to_date').value;
+    if (f) p.set('from_date', f);
+    if (t) p.set('to_date', t);
+    return p.toString();
+  }
+
+  async function loadAll() {
+    qs('status-msg').textContent = 'Yuklanmoqda…';
+    const params = buildParams();
+    try {
+      const [usageRes, userRes] = await Promise.all([
+        fetch(`/api/v1/statistics/api-usage?${params}`),
+        fetch(`/api/v1/statistics/api-usage/by-user?${params}`),
+      ]);
+      allData = await usageRes.json();
+      userData = await userRes.json();
+      qs('status-msg').textContent = '';
+      renderAll();
+    } catch (e) {
+      qs('status-msg').textContent = '❌ Xato yuz berdi';
+    }
+  }
+
+  function renderAll() {
+    renderCards();
+    renderBarChart();
+    renderPieChart();
+    renderTable();
+    renderUnused();
+    renderSlow();
+    renderUsers();
+  }
+
+  function renderCards() {
+    const total = allData.reduce((s, r) => s + r.total_requests, 0);
+    const avgMs = allData.length
+      ? allData.reduce((s, r) => s + r.avg_response_ms * r.total_requests, 0) / total
+      : 0;
+    const top = allData[0];
+
+    qs('card-total').textContent = total.toLocaleString('uz');
+    qs('card-top').textContent = top ? friendlyName(top.path) : '—';
+    qs('card-top-count').textContent = top ? `${top.total_requests.toLocaleString()} marta` : '';
+    qs('card-avg').textContent = avgMs ? Math.round(avgMs) + ' ms' : '—';
+    qs('card-users').textContent = userData.length.toLocaleString('uz');
+  }
+
+  function renderBarChart() {
+    qs('bar-spinner').style.display = 'none';
+    const canvas = qs('barChart');
+    canvas.style.display = 'block';
+
+    const top10 = allData.slice(0, 10);
+    const labels = top10.map(r => friendlyName(r.path));
+    const values = top10.map(r => r.total_requests);
+
+    if (barChartInst) barChartInst.destroy();
+    barChartInst = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'So\'rovlar soni',
+          data: values,
+          backgroundColor: 'rgba(102,126,234,0.7)',
+          borderColor: '#667eea',
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            grid: { color: '#2d3748' },
+            ticks: { color: '#a0aec0' },
+          },
+          y: {
+            grid: { color: '#2d3748' },
+            ticks: { color: '#e2e8f0', font: { size: 12 } },
+          }
+        }
+      }
+    });
+  }
+
+  function renderPieChart() {
+    qs('pie-spinner').style.display = 'none';
+    const canvas = qs('pieChart');
+    canvas.style.display = 'block';
+
+    const methodTotals = {};
+    for (const r of allData) {
+      methodTotals[r.method] = (methodTotals[r.method] || 0) + r.total_requests;
+    }
+    const labels = Object.keys(methodTotals);
+    const values = labels.map(m => methodTotals[m]);
+    const colors = { GET: '#68d391', POST: '#63b3ed', PATCH: '#b794f4', DELETE: '#fc8181', PUT: '#f6ad55' };
+    const bgColors = labels.map(m => colors[m] || '#a0aec0');
+
+    if (pieChartInst) pieChartInst.destroy();
+    pieChartInst = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: bgColors,
+          borderColor: '#1a1f2e',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            labels: { color: '#a0aec0', padding: 16, font: { size: 13 } }
+          }
+        }
+      }
+    });
+  }
+
+  function renderTable() {
+    qs('tbl-spinner').style.display = 'none';
+    qs('tbl-all-wrap').style.display = 'block';
+
+    const maxCount = allData[0]?.total_requests || 1;
+    const tbody = qs('tbl-all-body');
+    tbody.innerHTML = '';
+
+    allData.forEach((r, i) => {
+      const pct = Math.round((r.total_requests / maxCount) * 100);
+      const sc = speedClass(r.avg_response_ms);
+      tbody.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td style="color:#4a5568;width:36px">${i + 1}</td>
+          <td>
+            <div style="font-weight:600;color:#e2e8f0;margin-bottom:2px">${friendlyName(r.path)}</div>
+            <div class="path-cell">${r.path}</div>
+          </td>
+          <td><span class="badge badge-${r.method}">${r.method}</span></td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+              <span class="bar-num">${r.total_requests.toLocaleString()}</span>
+            </div>
+          </td>
+          <td><span class="speed ${sc}">${speedLabel(r.avg_response_ms)} (${r.avg_response_ms} ms)</span></td>
+        </tr>
+      `);
+    });
+
+    if (!allData.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">Hozircha ma\'lumot yo\'q</td></tr>';
+    }
+  }
+
+  function renderUnused() {
+    const unused = allData.filter(r => r.total_requests <= 5);
+    const el = qs('unused-chips');
+    if (!unused.length) {
+      el.innerHTML = '<p style="color:#718096;font-size:13px">Barcha bo\'limlar faol ishlatilmoqda ✅</p>';
+      return;
+    }
+    el.innerHTML = unused.map(r =>
+      `<span class="unused-chip">${friendlyName(r.path)} (${r.total_requests})</span>`
+    ).join('');
+  }
+
+  function renderSlow() {
+    const slow = [...allData]
+      .sort((a, b) => b.avg_response_ms - a.avg_response_ms)
+      .slice(0, 20);
+    const tbody = qs('tbl-slow-body');
+    tbody.innerHTML = '';
+    slow.forEach((r, i) => {
+      const sc = speedClass(r.avg_response_ms);
+      tbody.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td style="color:#4a5568;width:36px">${i + 1}</td>
+          <td>
+            <div style="font-weight:600;color:#e2e8f0;margin-bottom:2px">${friendlyName(r.path)}</div>
+            <div class="path-cell">${r.path}</div>
+          </td>
+          <td><span class="speed ${sc}" style="font-size:14px">${r.avg_response_ms} ms</span></td>
+          <td style="color:#a0aec0">${r.total_requests.toLocaleString()} marta</td>
+        </tr>
+      `);
+    });
+  }
+
+  function renderUsers() {
+    const tbody = qs('tbl-users-body');
+    tbody.innerHTML = '';
+    const maxU = userData[0]?.total_requests || 1;
+    userData.forEach((r, i) => {
+      const pct = Math.round((r.total_requests / maxU) * 100);
+      tbody.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td style="color:#4a5568;width:36px">${i + 1}</td>
+          <td>👤 Foydalanuvchi #${r.user_id}</td>
+          <td>
+            <div class="bar-cell">
+              <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+              <span class="bar-num">${r.total_requests.toLocaleString()}</span>
+            </div>
+          </td>
+        </tr>
+      `);
+    });
+    if (!userData.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty">Ma\'lumot yo\'q</td></tr>';
+    }
+  }
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      const names = ['all', 'unused', 'slow', 'users'];
+      t.classList.toggle('active', names[i] === name);
+    });
+    document.querySelectorAll('.tab-content').forEach(el => {
+      el.classList.toggle('active', el.id === `tab-${name}`);
+    });
+  }
+
+  // Set default date range: last 30 days
+  const today = new Date();
+  const ago30 = new Date(today); ago30.setDate(ago30.getDate() - 30);
+  qs('to_date').value = today.toISOString().slice(0, 10);
+  qs('from_date').value = ago30.toISOString().slice(0, 10);
+
+  loadAll();
+</script>
+</body>
+</html>

@@ -5,6 +5,20 @@ from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field
 
 
+# ── API Usage ────────────────────────────────────────────────────────────────
+
+class ApiUsageItem(BaseModel):
+    method: str
+    path: str
+    total_requests: int
+    avg_response_ms: float
+
+
+class ApiUsageByUserItem(BaseModel):
+    user_id: int
+    total_requests: int
+
+
 # ── Common ────────────────────────────────────────────────────────────────────
 
 class BranchItem(BaseModel):

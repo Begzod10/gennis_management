@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, BigInteger, String, Date, DateTime, ForeignKey, Boolean, Integer, Text, Table, UniqueConstraint
+from sqlalchemy import Column, BigInteger, String, Date, DateTime, ForeignKey, Boolean, Integer, Text, Table, UniqueConstraint, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -409,3 +409,15 @@ class Notification(Base):
 
     user = relationship("User")
     mission = relationship("Mission", back_populates="notifications")
+
+
+class ApiLog(Base):
+    __tablename__ = "api_log"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    method = Column(String(10), nullable=False)
+    path = Column(String(500), nullable=False, index=True)
+    status_code = Column(Integer, nullable=True)
+    user_id = Column(BigInteger, nullable=True, index=True)
+    response_time_ms = Column(Float, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)

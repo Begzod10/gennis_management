@@ -1,10 +1,14 @@
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from jose import jwt, JWTError
 from sqlalchemy import text
-from .database import engine, gennis_write_engine, turon_write_engine
+from .config import settings
+from .database import engine, gennis_write_engine, turon_write_engine, SessionLocal
+from .models import ApiLog
 from .external_models.gennis import GennisDividend, GennisInvestment
 from .external_models.turon import TuronDividend, TuronInvestment
 from .routers.v1 import auth
@@ -63,6 +67,46 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_SKIP_LOG_PREFIXES = ("/static", "/uploads", "/docs", "/openapi.json", "/")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    path = request.url.path
+    if any(path == p or path.startswith(p + "/") for p in ("/static", "/uploads")):
+        return await call_next(request)
+
+    start = time.monotonic()
+    response = await call_next(request)
+    elapsed_ms = (time.monotonic() - start) * 1000
+
+    user_id = None
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            payload = jwt.decode(auth[7:], settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            user_id = payload.get("user_id")
+        except JWTError:
+            pass
+
+    try:
+        db = SessionLocal()
+        db.add(ApiLog(
+            method=request.method,
+            path=path,
+            status_code=response.status_code,
+            user_id=user_id,
+            response_time_ms=round(elapsed_ms, 2),
+        ))
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "100.81.196.80:3000",
@@ -112,6 +156,12 @@ app.include_router(telegram_bot.router, prefix=V1)
 @app.get("/docs", include_in_schema=False)
 def custom_swagger():
     with open("static/swagger-custom.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.get("/usage", include_in_schema=False)
+def usage_dashboard():
+    with open("static/usage-dashboard.html", "r") as f:
         return HTMLResponse(content=f.read())
 
 
