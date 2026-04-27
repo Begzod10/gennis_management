@@ -117,6 +117,67 @@ def create_overhead_type(
     return obj
 
 
+@router.post("/import-from-turon", status_code=200)
+def import_overhead_types_from_turon(
+    db: Session = Depends(get_db),
+    gennis_db: Session = Depends(get_gennis_write_db),
+    turon_db: Session = Depends(get_turon_write_db),
+):
+    turon_types = turon_db.query(TuronOverheadType).filter(
+        TuronOverheadType.deleted == False
+    ).all()
+
+    created = []
+    skipped = []
+
+    for t in turon_types:
+        if t.management_id:
+            skipped.append(t.name)
+            continue
+
+        existing = db.query(OverheadType).filter(
+            OverheadType.name == t.name,
+            OverheadType.deleted == False,
+        ).first()
+
+        if existing:
+            t.management_id = existing.id
+            gennis_exists = gennis_db.query(GennisOverheadType).filter(
+                GennisOverheadType.management_id == existing.id
+            ).first()
+            if not gennis_exists:
+                gennis_db.add(GennisOverheadType(
+                    management_id=existing.id,
+                    name=existing.name,
+                    cost=existing.cost,
+                    changeable=existing.changeable,
+                    deleted=False,
+                ))
+            skipped.append(t.name)
+            continue
+
+        obj = OverheadType(name=t.name, changeable=True, deleted=False)
+        db.add(obj)
+        db.flush()
+
+        gennis_db.add(GennisOverheadType(
+            management_id=obj.id,
+            name=obj.name,
+            cost=obj.cost,
+            changeable=obj.changeable,
+            deleted=False,
+        ))
+
+        t.management_id = obj.id
+        created.append(t.name)
+
+    db.commit()
+    gennis_db.commit()
+    turon_db.commit()
+
+    return {"created": created, "skipped": skipped}
+
+
 @router.get("/{overhead_type_id}", response_model=OverheadTypeOut)
 def get_overhead_type(overhead_type_id: int, db: Session = Depends(get_db)):
     return _get_or_404(db, overhead_type_id)
