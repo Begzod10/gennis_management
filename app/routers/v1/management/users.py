@@ -33,6 +33,22 @@ def list_users(role: str = None, deleted: bool = False, db: Session = Depends(ge
     return q.all()
 
 
+@router.get("/unassigned", response_model=List[UserOut])
+def list_unassigned_users(db: Session = Depends(get_db)):
+    in_project = db.query(ProjectMember.user_id)
+    in_section = db.query(SectionMember.user_id)
+    return (
+        db.query(User)
+        .filter(
+            User.deleted == False,
+            User.role != "owner",
+            ~User.id.in_(in_project),
+            ~User.id.in_(in_section),
+        )
+        .all()
+    )
+
+
 @router.get("/project-managers", response_model=List[UserOut])
 def list_project_managers(db: Session = Depends(get_db)):
     return (
