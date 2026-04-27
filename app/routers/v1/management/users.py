@@ -42,6 +42,7 @@ def list_unassigned_users(db: Session = Depends(get_db)):
         .filter(
             User.deleted == False,
             User.role != "owner",
+            User.role != "manager",
             ~User.id.in_(in_project),
             ~User.id.in_(in_section),
         )
