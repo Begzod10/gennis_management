@@ -394,6 +394,16 @@ class GennisMissionHistory(GennisBase):
 
 # ── Overheads ─────────────────────────────────────────────────────────────────
 
+class OverheadType(GennisBase):
+    __tablename__ = "overheadtype"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    cost = Column(Integer, nullable=True)
+    changeable = Column(Boolean, default=True, nullable=False)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    deleted = Column(Boolean, default=False)
+
+
 class Overhead(GennisBase):
     __tablename__ = "overhead"
     id = Column(Integer, primary_key=True)
