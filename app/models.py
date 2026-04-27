@@ -419,7 +419,6 @@ class OverheadType(Base):
     cost = Column(BigInteger, nullable=True)
     changeable = Column(Boolean, default=True, nullable=False)
     deleted = Column(Boolean, default=False, nullable=False)
-    gennis_id = Column(Integer, nullable=True, unique=True)
 
 
 class ApiLog(Base):

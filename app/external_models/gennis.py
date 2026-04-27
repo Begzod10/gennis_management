@@ -402,6 +402,7 @@ class OverheadType(GennisBase):
     changeable = Column(Boolean, default=True, nullable=False)
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     deleted = Column(Boolean, default=False)
+    management_id = Column(Integer, nullable=True)
 
 
 class Overhead(GennisBase):
@@ -409,6 +410,7 @@ class Overhead(GennisBase):
     id = Column(Integer, primary_key=True)
     item_sum = Column(Integer)
     item_name = Column(String)
+    overhead_type_id = Column(Integer, ForeignKey("overheadtype.id"), nullable=True)
     payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"))
     location_id = Column(Integer, ForeignKey("locations.id"))
     calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))

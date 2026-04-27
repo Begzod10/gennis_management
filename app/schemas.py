@@ -678,3 +678,26 @@ class MissionApprove(BaseModel):
     approval_status: ApprovalStatusEnum
 
 
+# --- OverheadType ---
+class OverheadTypeCreate(BaseModel):
+    name: str
+    cost: Optional[int] = None
+    changeable: bool = True
+
+
+class OverheadTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    cost: Optional[int] = None
+    changeable: Optional[bool] = None
+
+
+class OverheadTypeOut(BaseModel):
+    id: int
+    name: str
+    cost: Optional[int]
+    changeable: bool
+    deleted: bool
+
+    model_config = {"from_attributes": True}
+
+

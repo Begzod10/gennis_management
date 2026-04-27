@@ -78,6 +78,8 @@ class OverheadType(TuronBase):
     id = Column(BigInteger, primary_key=True)
     name = Column(String)
     order = Column(Integer)
+    management_id = Column(Integer, nullable=True)
+    deleted = Column(Boolean, default=False)
 
 
 class System(TuronBase):

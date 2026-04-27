@@ -15,6 +15,7 @@ _log = logging.getLogger(__name__)
 from .external_models.gennis import GennisDividend, GennisInvestment
 from .external_models.turon import TuronDividend, TuronInvestment
 from .routers.v1 import auth
+from .routers.v1.accountant import overhead_types
 from .routers.v1.management import (
     jobs, users, salary_months, salary_days,
     system_models, branches, tags, missions,
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
         conn.execute(text("ALTER TABLE mission_comments ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
         conn.execute(text("ALTER TABLE mission_proofs ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
         conn.execute(text("ALTER TABLE mission_proofs ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
+        conn.execute(text("ALTER TABLE overheadtype ADD COLUMN IF NOT EXISTS management_id BIGINT"))
         conn.commit()
     with turon_write_engine.connect() as conn:
         conn.execute(text("ALTER TABLE tasks_mission ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
@@ -57,6 +59,8 @@ async def lifespan(app: FastAPI):
         conn.execute(text("ALTER TABLE tasks_missionattachment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
         conn.execute(text("ALTER TABLE tasks_missioncomment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
         conn.execute(text("ALTER TABLE tasks_missionproof ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+        conn.execute(text("ALTER TABLE overhead_overheadtype ADD COLUMN IF NOT EXISTS management_id BIGINT"))
+        conn.execute(text("ALTER TABLE overhead_overheadtype ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT FALSE"))
         conn.commit()
 
     yield
@@ -146,6 +150,7 @@ app.include_router(notifications.router, prefix=V1)
 app.include_router(statistics.router, prefix=V1)
 app.include_router(gennis_detail.router, prefix=V1)
 app.include_router(turon_detail.router, prefix=V1)
+app.include_router(overhead_types.router, prefix=V1)
 app.include_router(dividends.router, prefix=V1)
 app.include_router(investments.router, prefix=V1)
 app.include_router(projects.router, prefix=V1)
