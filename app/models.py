@@ -411,6 +411,17 @@ class Notification(Base):
     mission = relationship("Mission", back_populates="notifications")
 
 
+class OverheadType(Base):
+    __tablename__ = "overhead_type"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    cost = Column(BigInteger, nullable=True)
+    changeable = Column(Boolean, default=True, nullable=False)
+    deleted = Column(Boolean, default=False, nullable=False)
+    gennis_id = Column(Integer, nullable=True, unique=True)
+
+
 class ApiLog(Base):
     __tablename__ = "api_log"
 
