@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, aliased
 from typing import List, Optional
 from app.database import get_db
 from app.models import Project, ProjectMember, User
@@ -38,13 +38,14 @@ def list_projects(
     if manager_id:
         q = q.filter(Project.manager_id == manager_id)
     if leader_id:
+        MemberUser = aliased(User)
         q = (
             q.join(ProjectMember, ProjectMember.project_id == Project.id)
-            .join(User, User.id == ProjectMember.user_id)
+            .join(MemberUser, MemberUser.id == ProjectMember.user_id)
             .filter(
                 ProjectMember.user_id == leader_id,
-                User.role.in_(["team_lead", "project_manager"]),
-                User.deleted == False,
+                MemberUser.role.in_(["team_lead", "project_manager"]),
+                MemberUser.deleted == False,
             )
         )
     return q.order_by(Project.created_at.desc()).all()
