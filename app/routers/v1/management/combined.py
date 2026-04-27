@@ -27,6 +27,7 @@ def all_directors(
     # ── Gennis managers ───────────────────────────────────────────────────────
     gq = (
         gennis_db.query(G.Staff, G.Users, G.GennisProfessions, G.GennisRoles, G.Locations)
+        .select_from(G.Staff)
         .join(G.Users, G.Staff.user_id == G.Users.id)
         .join(G.GennisProfessions, G.Staff.profession_id == G.GennisProfessions.id)
         .join(G.Locations, G.Users.location_id == G.Locations.id)
@@ -61,6 +62,7 @@ def all_directors(
     # ── Turon directors ───────────────────────────────────────────────────────
     tq = (
         turon_db.query(T.CustomUser, T.ManyBranch, T.Branch)
+        .select_from(T.CustomUser)
         .join(T.CustomAutoGroup, T.CustomAutoGroup.user_id == T.CustomUser.id)
         .join(T.AuthGroup, T.AuthGroup.id == T.CustomAutoGroup.group_id)
         .join(T.ManyBranch, T.ManyBranch.user_id == T.CustomUser.id)
