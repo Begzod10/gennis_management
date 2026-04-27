@@ -78,7 +78,23 @@ class OverheadType(TuronBase):
     id = Column(BigInteger, primary_key=True)
     name = Column(String)
     order = Column(Integer)
+    cost = Column(Integer, nullable=True)
+    changeable = Column(Boolean, default=True)
     management_id = Column(Integer, nullable=True)
+    deleted = Column(Boolean, default=False)
+
+
+class OverheadTypeLog(TuronBase):
+    __tablename__ = "overhead_overheadtypelog"
+    id = Column(BigInteger, primary_key=True)
+    overhead_type_id = Column(BigInteger, ForeignKey("overhead_overheadtype.id"), nullable=False)
+    cost = Column(Integer, nullable=True)
+    is_paid = Column(Boolean, default=False)
+    is_prepaid = Column(Boolean, default=False)
+    paid_date = Column(DateTime, nullable=True)
+    overhead_id = Column(BigInteger, ForeignKey("overhead_overhead.id"), nullable=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
+    date = Column(Date, nullable=True)
     deleted = Column(Boolean, default=False)
 
 
