@@ -400,7 +400,6 @@ class OverheadType(GennisBase):
     name = Column(String, nullable=False)
     cost = Column(Integer, nullable=True)
     changeable = Column(Boolean, default=True, nullable=False)
-    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     deleted = Column(Boolean, default=False)
     management_id = Column(Integer, nullable=True)
 

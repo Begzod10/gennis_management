@@ -90,7 +90,6 @@ def list_gennis_overhead_types(gennis_db: Session = Depends(get_gennis_write_db)
             "name": r.name,
             "cost": r.cost,
             "changeable": r.changeable,
-            "location_id": r.location_id,
             "management_id": r.management_id,
         }
         for r in rows
