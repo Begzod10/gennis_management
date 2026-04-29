@@ -1224,8 +1224,9 @@ def user_mission_performance(
 ):
     """Mission completion stats per executor within a deadline range.
 
-    A mission is considered 'finished' when finish_date is set.
-    'On time' = finish_date <= deadline. 'Late' = finish_date > deadline.
+    A mission is considered 'finished' when its status is 'tasdiqlangan'.
+    'On time' = status='tasdiqlangan' AND finish_date <= deadline.
+    'Late'    = status='tasdiqlangan' AND finish_date > deadline.
 
     When `user_id` is omitted, returns one entry per executor in `users` plus
     an `overall` aggregate. When `user_id` is provided, `users` contains a
@@ -1254,11 +1255,17 @@ def user_mission_performance(
 
     def build_stats(rows: List[Mission]) -> dict:
         total = len(rows)
-        finished_rows = [m for m in rows if m.finish_date is not None]
+        finished_rows = [m for m in rows if m.status == "tasdiqlangan"]
         finished = len(finished_rows)
         not_finished = total - finished
-        on_time = sum(1 for m in finished_rows if m.finish_date <= m.deadline)
-        late = finished - on_time
+        on_time = sum(
+            1 for m in finished_rows
+            if m.finish_date is not None and m.finish_date <= m.deadline
+        )
+        late = sum(
+            1 for m in finished_rows
+            if m.finish_date is not None and m.finish_date > m.deadline
+        )
         return {
             "total": total,
             "finished": finished,
