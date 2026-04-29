@@ -200,6 +200,59 @@ def import_overhead_types_from_turon(
     return {"created": created, "skipped": skipped}
 
 
+# ── Flat lists across all locations / branches ────────────────────────────────
+
+
+@router.get("/gennis")
+def list_all_gennis_overhead_types(
+    location_id: Optional[int] = Query(None, description="Filter to one location"),
+    gennis_db: Session = Depends(get_gennis_write_db),
+):
+    """List every Gennis OverheadType copy, optionally filtered by location."""
+    q = gennis_db.query(GennisOverheadType).filter(
+        GennisOverheadType.deleted == False,
+    )
+    if location_id:
+        q = q.filter(GennisOverheadType.location_id == location_id)
+    rows = q.order_by(GennisOverheadType.location_id, GennisOverheadType.id).all()
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "cost": r.cost,
+            "changeable": r.changeable,
+            "location_id": r.location_id,
+            "management_id": r.management_id,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/turon")
+def list_all_turon_overhead_types(
+    branch_id: Optional[int] = Query(None, description="Filter to one branch"),
+    turon_db: Session = Depends(get_turon_write_db),
+):
+    """List every Turon OverheadType copy, optionally filtered by branch."""
+    q = turon_db.query(TuronOverheadType).filter(
+        TuronOverheadType.deleted == False,
+    )
+    if branch_id:
+        q = q.filter(TuronOverheadType.branch_id == branch_id)
+    rows = q.order_by(TuronOverheadType.branch_id, TuronOverheadType.id).all()
+    return [
+        {
+            "id": r.id,
+            "name": r.name,
+            "cost": r.cost,
+            "changeable": r.changeable,
+            "branch_id": r.branch_id,
+            "management_id": r.management_id,
+        }
+        for r in rows
+    ]
+
+
 # ── Per-location / per-branch copies ──────────────────────────────────────────
 # Each management OverheadType has N copies in Gennis (one per location) and
 # M copies in Turon (one per branch). These routes let the accountant view and
