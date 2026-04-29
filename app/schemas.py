@@ -664,6 +664,7 @@ class MissionHistoryOut(BaseModel):
     turon_executor_name: Optional[str]
     turon_reviewer_id: Optional[int]
     turon_reviewer_name: Optional[str]
+    status: Optional[str] = None
     note: Optional[str]
     created_at: datetime
     changed_by: Optional[UserOut] = None

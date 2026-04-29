@@ -329,6 +329,7 @@ class MissionHistory(Base):
     turon_executor_name = Column(String(255), nullable=True)
     turon_reviewer_id = Column(BigInteger, nullable=True)
     turon_reviewer_name = Column(String(255), nullable=True)
+    status = Column(String(30), nullable=True)
     note = Column(String(500), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 

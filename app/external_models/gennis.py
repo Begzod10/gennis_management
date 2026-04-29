@@ -388,6 +388,7 @@ class GennisMissionHistory(GennisBase):
     turon_reviewer_id = Column(BigInteger, nullable=True)
     turon_reviewer_name = Column(String(255), nullable=True)
     changed_by_name = Column(String(255), nullable=True)
+    status = Column(String(30), nullable=True)
     note = Column(String(500), nullable=True)
     created_at = Column(DateTime, nullable=True)
 
@@ -400,6 +401,7 @@ class OverheadType(GennisBase):
     name = Column(String, nullable=False)
     cost = Column(Integer, nullable=True)
     changeable = Column(Boolean, default=True, nullable=False)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     deleted = Column(Boolean, default=False)
     management_id = Column(Integer, nullable=True)
 

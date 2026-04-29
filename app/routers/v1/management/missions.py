@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import or_
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
 from app.models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember
 from app.schemas import (
@@ -88,7 +89,13 @@ class ExternalMissionOut(BaseModel):
 router = APIRouter(prefix="/missions", tags=["Missions"])
 
 
-def _log_history(mission: Mission, db: Session, changed_by_id: Optional[int] = None, note: Optional[str] = None) -> MissionHistory:
+def _log_history(
+    mission: Mission,
+    db: Session,
+    changed_by_id: Optional[int] = None,
+    note: Optional[str] = None,
+    status: Optional[str] = None,
+) -> MissionHistory:
     entry = MissionHistory(
         mission_id=mission.id,
         changed_by_id=changed_by_id,
@@ -102,6 +109,7 @@ def _log_history(mission: Mission, db: Session, changed_by_id: Optional[int] = N
         turon_executor_name=mission.turon_executor_name,
         turon_reviewer_id=mission.turon_reviewer_id,
         turon_reviewer_name=mission.turon_reviewer_name,
+        status=status if status is not None else mission.status,
         note=note,
     )
     db.add(entry)
@@ -132,6 +140,7 @@ def _sync_history_to_gennis(entry: MissionHistory, mission: Mission, db: Session
         turon_reviewer_id=entry.turon_reviewer_id,
         turon_reviewer_name=entry.turon_reviewer_name,
         changed_by_name=_resolve_user_name(db, entry.changed_by_id),
+        status=entry.status,
         note=entry.note,
         created_at=entry.created_at,
     )
@@ -161,6 +170,7 @@ def _sync_history_to_turon(entry: MissionHistory, mission: Mission, db: Session,
         gennis_reviewer_id=entry.gennis_reviewer_id,
         gennis_reviewer_name=entry.gennis_reviewer_name,
         changed_by_name=_resolve_user_name(db, entry.changed_by_id),
+        status=entry.status,
         note=entry.note,
         created_at=entry.created_at,
     )
@@ -867,14 +877,28 @@ def delete_mission(
 def change_status(
     mission_id: int,
     status: MissionStatusEnum,
+    changed_by_id: Optional[int] = None,
     db: Session = Depends(get_db),
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
     mission = _get_or_404(db, mission_id)
+    previous_status = mission.status
     mission.status = status.value
     db.commit()
     db.refresh(mission)
+
+    if previous_status != mission.status:
+        entry = _log_history(
+            mission, db,
+            changed_by_id=changed_by_id,
+            note=f"status: {previous_status} -> {mission.status}",
+            status=mission.status,
+        )
+        db.commit()
+        db.refresh(entry)
+        _sync_history_to_gennis(entry, mission, db, gennis_db)
+        _sync_history_to_turon(entry, mission, db, turon_db)
 
     _sync_to_gennis(mission, gennis_db)
     _sync_to_turon(mission, turon_db)
@@ -891,12 +915,25 @@ def approve_mission(
     data: MissionApprove,
     approver_id: int,
     db: Session = Depends(get_db),
+    gennis_db: Session = Depends(get_gennis_write_db),
+    turon_db: Session = Depends(get_turon_write_db),
 ):
     mission = _get_or_404(db, mission_id)
     mission.approval_status = data.approval_status.value
     mission.approved_by_id = approver_id
     db.commit()
     db.refresh(mission)
+
+    entry = _log_history(
+        mission, db,
+        changed_by_id=approver_id,
+        note=f"approval: {data.approval_status.value}",
+        status=mission.status,
+    )
+    db.commit()
+    db.refresh(entry)
+    _sync_history_to_gennis(entry, mission, db, gennis_db)
+    _sync_history_to_turon(entry, mission, db, turon_db)
 
     approver_name = _resolve_user_name(db, approver_id) or ""
     if data.approval_status.value == "approved":
@@ -986,6 +1023,7 @@ def redirect_mission(
 def complete_mission(
     mission_id: int,
     finish_date: str,
+    changed_by_id: Optional[int] = None,
     db: Session = Depends(get_db),
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
@@ -996,11 +1034,23 @@ def complete_mission(
         mission.finish_date = date.fromisoformat(finish_date)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+    previous_status = mission.status
     mission.status = "completed"
     mission.calculate_delay_days()
     mission.final_sc = mission.final_score()
     db.commit()
     db.refresh(mission)
+
+    entry = _log_history(
+        mission, db,
+        changed_by_id=changed_by_id or mission.executor_id,
+        note=f"status: {previous_status} -> completed (finish_date={mission.finish_date})",
+        status="completed",
+    )
+    db.commit()
+    db.refresh(entry)
+    _sync_history_to_gennis(entry, mission, db, gennis_db)
+    _sync_history_to_turon(entry, mission, db, turon_db)
 
     _sync_to_gennis(mission, gennis_db)
     _sync_to_turon(mission, turon_db)
@@ -1162,4 +1212,181 @@ def external_mission_stats(
     return {
         "gennis": {"total": gq.count(), "by_status": by_status(gq, GennisMission)},
         "turon": {"total": tq.count(), "by_status": by_status(tq, TuronMission)},
+    }
+
+
+@router.get("/stats/user-performance", response_model=dict)
+def user_mission_performance(
+    from_date: date = Query(..., description="Filter missions with deadline >= from_date"),
+    to_date: date = Query(..., description="Filter missions with deadline <= to_date"),
+    user_id: Optional[int] = Query(None, description="Executor user id; omit for all users"),
+    db: Session = Depends(get_db),
+):
+    """Mission completion stats for a user within a deadline range.
+
+    A mission is considered 'finished' when finish_date is set.
+    'On time' = finish_date <= deadline. 'Late' = finish_date > deadline.
+    """
+    if from_date > to_date:
+        raise HTTPException(status_code=400, detail="from_date must be <= to_date")
+
+    q = db.query(Mission).filter(
+        Mission.deleted == False,
+        Mission.deadline >= from_date,
+        Mission.deadline <= to_date,
+    )
+    if user_id is not None:
+        q = q.filter(Mission.executor_id == user_id)
+
+    missions = q.all()
+
+    total = len(missions)
+    finished_missions = [m for m in missions if m.finish_date is not None]
+    finished = len(finished_missions)
+    not_finished = total - finished
+
+    on_time = sum(1 for m in finished_missions if m.finish_date <= m.deadline)
+    late = finished - on_time
+
+    def pct(numerator: int, denominator: int) -> float:
+        return round(numerator * 100 / denominator, 2) if denominator > 0 else 0.0
+
+    return {
+        "from_date": from_date,
+        "to_date": to_date,
+        "user_id": user_id,
+        "total": total,
+        "finished": finished,
+        "not_finished": not_finished,
+        "completion_percentage": pct(finished, total),
+        "not_finished_percentage": pct(not_finished, total),
+        "on_time": on_time,
+        "late": late,
+        "on_time_percentage_of_finished": pct(on_time, finished),
+        "late_percentage_of_finished": pct(late, finished),
+        "on_time_percentage_of_total": pct(on_time, total),
+        "late_percentage_of_total": pct(late, total),
+    }
+
+
+@router.get("/stats/managers", response_model=dict)
+def manager_mission_stats(
+    from_date: date = Query(..., description="Filter missions created on/after this date"),
+    to_date: date = Query(..., description="Filter missions created on/before this date"),
+    db: Session = Depends(get_db),
+):
+    """Mission stats per project manager and section leader within a date range.
+
+    A user is a "manager" if they manage at least one project (Project.manager_id)
+    or lead at least one section (Section.leader_id).
+
+    For each manager, returns:
+      - created:  missions where they are creator_id OR redirected_by_id
+                  (redirecting counts as creating for the new executor)
+      - reviewed: missions where they are reviewer_id
+      - received: missions where they are executor_id OR original_executor_id
+                  (covers both currently-assigned and redirected-away)
+      - rejected: missions where they are approved_by_id AND approval_status='declined'
+
+    Filtered by mission.created_at within [from_date, to_date].
+    """
+    if from_date > to_date:
+        raise HTTPException(status_code=400, detail="from_date must be <= to_date")
+
+    range_start = datetime.combine(from_date, datetime.min.time())
+    range_end = datetime.combine(to_date + timedelta(days=1), datetime.min.time())
+
+    project_manager_ids = {
+        row[0] for row in db.query(Project.manager_id)
+        .filter(Project.deleted == False, Project.manager_id.isnot(None))
+        .distinct().all()
+    }
+    section_leader_ids = {
+        row[0] for row in db.query(Section.leader_id)
+        .filter(Section.deleted == False, Section.leader_id.isnot(None))
+        .distinct().all()
+    }
+    manager_ids = project_manager_ids | section_leader_ids
+    if not manager_ids:
+        return {"from_date": from_date, "to_date": to_date, "managers": []}
+
+    managers = db.query(User).filter(
+        User.id.in_(manager_ids),
+        User.deleted == False,
+    ).all()
+
+    base_filters = [
+        Mission.deleted == False,
+        Mission.created_at >= range_start,
+        Mission.created_at < range_end,
+    ]
+
+    raw = []
+    for m in managers:
+        created = db.query(Mission).filter(
+            *base_filters,
+            or_(Mission.creator_id == m.id, Mission.redirected_by_id == m.id),
+        ).count()
+
+        reviewed = db.query(Mission).filter(
+            *base_filters,
+            Mission.reviewer_id == m.id,
+        ).count()
+
+        received = db.query(Mission).filter(
+            *base_filters,
+            or_(Mission.executor_id == m.id, Mission.original_executor_id == m.id),
+        ).count()
+
+        rejected = db.query(Mission).filter(
+            *base_filters,
+            Mission.approved_by_id == m.id,
+            Mission.approval_status == "declined",
+        ).count()
+
+        manager_type = []
+        if m.id in project_manager_ids:
+            manager_type.append("project_manager")
+        if m.id in section_leader_ids:
+            manager_type.append("section_leader")
+
+        raw.append({
+            "id": m.id,
+            "name": f"{m.name} {m.surname}".strip() if m.surname else m.name,
+            "role": m.role,
+            "manager_type": manager_type,
+            "created": created,
+            "reviewed": reviewed,
+            "received": received,
+            "rejected": rejected,
+        })
+
+    totals = {
+        "created": sum(r["created"] for r in raw),
+        "reviewed": sum(r["reviewed"] for r in raw),
+        "received": sum(r["received"] for r in raw),
+        "rejected": sum(r["rejected"] for r in raw),
+    }
+
+    def pct(numerator: int, denominator: int) -> float:
+        return round(numerator * 100 / denominator, 2) if denominator > 0 else 0.0
+
+    results = []
+    for r in raw:
+        results.append({
+            **r,
+            "created_share_pct": pct(r["created"], totals["created"]),
+            "reviewed_share_pct": pct(r["reviewed"], totals["reviewed"]),
+            "received_share_pct": pct(r["received"], totals["received"]),
+            "rejected_share_pct": pct(r["rejected"], totals["rejected"]),
+            "rejection_rate_pct": pct(r["rejected"], r["reviewed"]),
+        })
+
+    results.sort(key=lambda r: (r["created"] + r["reviewed"] + r["received"]), reverse=True)
+
+    return {
+        "from_date": from_date,
+        "to_date": to_date,
+        "totals": totals,
+        "managers": results,
     }

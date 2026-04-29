@@ -59,8 +59,6 @@ async def lifespan(app: FastAPI):
         conn.execute(text("ALTER TABLE tasks_missionattachment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
         conn.execute(text("ALTER TABLE tasks_missioncomment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
         conn.execute(text("ALTER TABLE tasks_missionproof ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE overhead_overheadtype ADD COLUMN IF NOT EXISTS management_id BIGINT"))
-        conn.execute(text("ALTER TABLE overhead_overheadtype ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT FALSE"))
         conn.commit()
 
     yield

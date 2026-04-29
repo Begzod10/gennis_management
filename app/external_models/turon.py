@@ -80,6 +80,7 @@ class OverheadType(TuronBase):
     order = Column(Integer)
     cost = Column(Integer, nullable=True)
     changeable = Column(Boolean, default=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
     management_id = Column(Integer, nullable=True)
     deleted = Column(Boolean, default=False)
 
@@ -624,6 +625,7 @@ class TuronMissionHistory(TuronBase):
     gennis_reviewer_id = Column(Integer, nullable=True)
     gennis_reviewer_name = Column(String(255), nullable=True)
     changed_by_name = Column(String(255), nullable=True)
+    status = Column(String(30), nullable=True)
     note = Column(String(500), nullable=True)
     created_at = Column(DateTime, nullable=True)
 
