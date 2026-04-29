@@ -201,6 +201,7 @@ class Mission(Base):
     start_date = Column(Date, server_default=func.current_date())
     deadline = Column(Date, nullable=False)
     finish_date = Column(Date, nullable=True)
+    approved_date = Column(Date, nullable=True)
 
     status = Column(String(30), default="not_started")
 

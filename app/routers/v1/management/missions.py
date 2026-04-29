@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
@@ -885,6 +885,16 @@ def change_status(
     mission = _get_or_404(db, mission_id)
     previous_status = mission.status
     mission.status = status.value
+    if mission.status == "completed" and mission.finish_date is None:
+        mission.finish_date = date.today()
+        mission.calculate_delay_days()
+        mission.final_sc = mission.final_score()
+    if mission.status == "approved" and mission.approved_date is None:
+        mission.approved_date = date.today()
+    if mission.status == "declined":
+        mission.finish_date = None
+        mission.approved_date = None
+        mission.delay_days = 0
     db.commit()
     db.refresh(mission)
 
@@ -921,6 +931,13 @@ def approve_mission(
     mission = _get_or_404(db, mission_id)
     mission.approval_status = data.approval_status.value
     mission.approved_by_id = approver_id
+    if data.approval_status.value == "approved":
+        if mission.approved_date is None:
+            mission.approved_date = date.today()
+    elif data.approval_status.value == "declined":
+        mission.finish_date = None
+        mission.approved_date = None
+        mission.delay_days = 0
     db.commit()
     db.refresh(mission)
 
@@ -1224,9 +1241,22 @@ def user_mission_performance(
 ):
     """Mission completion stats per executor within a deadline range.
 
-    A mission is considered 'finished' when its status is 'approved'.
-    'On time' = status='approved' AND finish_date <= deadline.
-    'Late'    = status='approved' AND finish_date > deadline.
+    Buckets:
+      - 'finished'  = executor delivered: status in ('completed', 'approved').
+      - 'approved'  = subset of finished that the reviewer has signed off
+                      (status == 'approved'). Always <= finished.
+      - 'not_finished' = total - finished.
+
+    Two on_time / late breakdowns are computed:
+      - delivery (on_time / late): based on effective_finish — the date the
+        executor delivered. Source: mission.finish_date, falling back to the
+        earliest MissionHistory entry where status flipped to
+        'completed' or 'approved'.
+      - approval (approved_on_time / approved_late): based on effective_approved
+        — the date the reviewer signed off. Source: mission.approved_date,
+        falling back to the earliest MissionHistory entry with status='approved'.
+
+    'On time' = effective_date <= deadline. 'Late' = effective_date > deadline.
 
     When `user_id` is omitted, returns one entry per executor in `users` plus
     an `overall` aggregate. When `user_id` is provided, `users` contains a
@@ -1250,34 +1280,105 @@ def user_mission_performance(
 
     missions = q.all()
 
+    # Backfill helpers: legacy rows that reached completed/approved via
+    # PATCH /status before auto-fill landed have null finish_date /
+    # approved_date. Fall back to the earliest matching history timestamp.
+    finish_backfill_ids = [
+        m.id for m in missions
+        if m.status in ("completed", "approved") and m.finish_date is None
+    ]
+    approved_backfill_ids = [
+        m.id for m in missions
+        if m.status == "approved" and getattr(m, "approved_date", None) is None
+    ]
+
+    history_finish: dict[int, date] = {}
+    if finish_backfill_ids:
+        rows = (
+            db.query(MissionHistory.mission_id, func.min(MissionHistory.created_at))
+            .filter(
+                MissionHistory.mission_id.in_(finish_backfill_ids),
+                MissionHistory.status.in_(("completed", "approved")),
+            )
+            .group_by(MissionHistory.mission_id)
+            .all()
+        )
+        history_finish = {mid: ts.date() for mid, ts in rows if ts is not None}
+
+    history_approved: dict[int, date] = {}
+    if approved_backfill_ids:
+        rows = (
+            db.query(MissionHistory.mission_id, func.min(MissionHistory.created_at))
+            .filter(
+                MissionHistory.mission_id.in_(approved_backfill_ids),
+                MissionHistory.status == "approved",
+            )
+            .group_by(MissionHistory.mission_id)
+            .all()
+        )
+        history_approved = {mid: ts.date() for mid, ts in rows if ts is not None}
+
+    def effective_finish(m: Mission) -> Optional[date]:
+        if m.finish_date is not None:
+            return m.finish_date
+        return history_finish.get(m.id)
+
+    def effective_approved(m: Mission) -> Optional[date]:
+        ad = getattr(m, "approved_date", None)
+        if ad is not None:
+            return ad
+        return history_approved.get(m.id)
+
     def pct(numerator: int, denominator: int) -> float:
         return round(numerator * 100 / denominator, 2) if denominator > 0 else 0.0
 
     def build_stats(rows: List[Mission]) -> dict:
         total = len(rows)
-        finished_rows = [m for m in rows if m.status == "approved"]
+        finished_rows = [m for m in rows if m.status in ("completed", "approved")]
+        approved_rows = [m for m in rows if m.status == "approved"]
         finished = len(finished_rows)
+        approved = len(approved_rows)
         not_finished = total - finished
-        on_time = sum(
-            1 for m in finished_rows
-            if m.finish_date is not None and m.finish_date <= m.deadline
-        )
-        late = sum(
-            1 for m in finished_rows
-            if m.finish_date is not None and m.finish_date > m.deadline
-        )
+
+        on_time = late = 0
+        for m in finished_rows:
+            ef = effective_finish(m)
+            if ef is None:
+                continue
+            if ef <= m.deadline:
+                on_time += 1
+            else:
+                late += 1
+
+        approved_on_time = approved_late = 0
+        for m in approved_rows:
+            ea = effective_approved(m)
+            if ea is None:
+                continue
+            if ea <= m.deadline:
+                approved_on_time += 1
+            else:
+                approved_late += 1
+
         return {
             "total": total,
             "finished": finished,
             "not_finished": not_finished,
-            "completion_percentage": pct(finished, total),
+            "approved": approved,
+            "finished_percentage": pct(finished, total),
             "not_finished_percentage": pct(not_finished, total),
+            "approved_percentage_of_total": pct(approved, total),
+            "approved_percentage_of_finished": pct(approved, finished),
             "on_time": on_time,
             "late": late,
             "on_time_percentage_of_finished": pct(on_time, finished),
             "late_percentage_of_finished": pct(late, finished),
             "on_time_percentage_of_total": pct(on_time, total),
             "late_percentage_of_total": pct(late, total),
+            "approved_on_time": approved_on_time,
+            "approved_late": approved_late,
+            "approved_on_time_percentage_of_approved": pct(approved_on_time, approved),
+            "approved_late_percentage_of_approved": pct(approved_late, approved),
         }
 
     by_user: dict[int, list[Mission]] = {}

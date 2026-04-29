@@ -377,6 +377,7 @@ class MissionOut(BaseModel):
     start_date: date
     deadline: date
     finish_date: Optional[date]
+    approved_date: Optional[date]
     status: str
     kpi_weight: int
     penalty_per_day: int
