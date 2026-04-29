@@ -1336,8 +1336,13 @@ def user_mission_performance(
         total = len(rows)
         finished_rows = [m for m in rows if m.status in ("completed", "approved")]
         approved_rows = [m for m in rows if m.status == "approved"]
+        rejected_rows = [
+            m for m in rows
+            if m.status == "declined" or m.approval_status == "declined"
+        ]
         finished = len(finished_rows)
         approved = len(approved_rows)
+        rejected = len(rejected_rows)
         not_finished = total - finished
 
         on_time = late = 0
@@ -1365,10 +1370,12 @@ def user_mission_performance(
             "finished": finished,
             "not_finished": not_finished,
             "approved": approved,
+            "rejected": rejected,
             "finished_percentage": pct(finished, total),
             "not_finished_percentage": pct(not_finished, total),
             "approved_percentage_of_total": pct(approved, total),
             "approved_percentage_of_finished": pct(approved, finished),
+            "rejected_percentage": pct(rejected, total),
             "on_time": on_time,
             "late": late,
             "on_time_percentage_of_finished": pct(on_time, finished),
