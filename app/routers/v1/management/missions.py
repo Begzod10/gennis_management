@@ -1222,50 +1222,79 @@ def user_mission_performance(
     user_id: Optional[int] = Query(None, description="Executor user id; omit for all users"),
     db: Session = Depends(get_db),
 ):
-    """Mission completion stats for a user within a deadline range.
+    """Mission completion stats per executor within a deadline range.
 
     A mission is considered 'finished' when finish_date is set.
     'On time' = finish_date <= deadline. 'Late' = finish_date > deadline.
+
+    When `user_id` is omitted, returns one entry per executor in `users` plus
+    an `overall` aggregate. When `user_id` is provided, `users` contains a
+    single entry for that user.
     """
     if from_date > to_date:
         raise HTTPException(status_code=400, detail="from_date must be <= to_date")
 
-    q = db.query(Mission).filter(
-        Mission.deleted == False,
-        Mission.deadline >= from_date,
-        Mission.deadline <= to_date,
+    q = (
+        db.query(Mission)
+        .options(selectinload(Mission.executor))
+        .filter(
+            Mission.deleted == False,
+            Mission.deadline >= from_date,
+            Mission.deadline <= to_date,
+            Mission.executor_id.isnot(None),
+        )
     )
     if user_id is not None:
         q = q.filter(Mission.executor_id == user_id)
 
     missions = q.all()
 
-    total = len(missions)
-    finished_missions = [m for m in missions if m.finish_date is not None]
-    finished = len(finished_missions)
-    not_finished = total - finished
-
-    on_time = sum(1 for m in finished_missions if m.finish_date <= m.deadline)
-    late = finished - on_time
-
     def pct(numerator: int, denominator: int) -> float:
         return round(numerator * 100 / denominator, 2) if denominator > 0 else 0.0
+
+    def build_stats(rows: List[Mission]) -> dict:
+        total = len(rows)
+        finished_rows = [m for m in rows if m.finish_date is not None]
+        finished = len(finished_rows)
+        not_finished = total - finished
+        on_time = sum(1 for m in finished_rows if m.finish_date <= m.deadline)
+        late = finished - on_time
+        return {
+            "total": total,
+            "finished": finished,
+            "not_finished": not_finished,
+            "completion_percentage": pct(finished, total),
+            "not_finished_percentage": pct(not_finished, total),
+            "on_time": on_time,
+            "late": late,
+            "on_time_percentage_of_finished": pct(on_time, finished),
+            "late_percentage_of_finished": pct(late, finished),
+            "on_time_percentage_of_total": pct(on_time, total),
+            "late_percentage_of_total": pct(late, total),
+        }
+
+    by_user: dict[int, list[Mission]] = {}
+    for m in missions:
+        by_user.setdefault(m.executor_id, []).append(m)
+
+    users_payload = []
+    for uid, rows in by_user.items():
+        executor = rows[0].executor
+        users_payload.append({
+            "user_id": uid,
+            "name": executor.name if executor else None,
+            "surname": executor.surname if executor else None,
+            "role": executor.role if executor else None,
+            **build_stats(rows),
+        })
+    users_payload.sort(key=lambda u: (-u["total"], (u["name"] or "").lower()))
 
     return {
         "from_date": from_date,
         "to_date": to_date,
         "user_id": user_id,
-        "total": total,
-        "finished": finished,
-        "not_finished": not_finished,
-        "completion_percentage": pct(finished, total),
-        "not_finished_percentage": pct(not_finished, total),
-        "on_time": on_time,
-        "late": late,
-        "on_time_percentage_of_finished": pct(on_time, finished),
-        "late_percentage_of_finished": pct(late, finished),
-        "on_time_percentage_of_total": pct(on_time, total),
-        "late_percentage_of_total": pct(late, total),
+        "users": users_payload,
+        "overall": build_stats(missions),
     }
 
 
