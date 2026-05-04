@@ -134,7 +134,10 @@ def _serialize_turon(req: TuronAdminRequest, db: Session) -> dict:
 @router.get("", response_model=List[AdminRequestOut])
 def list_admin_requests(
     source: Optional[Source] = Query(None, description="Filter to one source: 'gennis' or 'turon'"),
-    status: Optional[bool] = Query(None, description="Filter by status (true=resolved, false=open)"),
+    accepted: Optional[bool] = Query(
+        None,
+        description="Filter by accepted flag — true returns accepted requests, false returns not-accepted ones. Omit for all.",
+    ),
     branch_id: Optional[int] = Query(None, description="Filter to one Turon branch"),
     location_id: Optional[int] = Query(None, description="Filter to one Gennis location"),
     gennis_db: Session = Depends(get_gennis_write_db),
@@ -145,16 +148,16 @@ def list_admin_requests(
 
     if source in (None, "gennis"):
         q = gennis_db.query(GennisAdminRequest)
-        if status is not None:
-            q = q.filter(GennisAdminRequest.status == status)
+        if accepted is not None:
+            q = q.filter(GennisAdminRequest.status == accepted)
         if location_id is not None:
             q = q.filter(GennisAdminRequest.branch_id == location_id)
         rows.extend(_serialize_gennis(r, gennis_db) for r in q.all())
 
     if source in (None, "turon"):
         q = turon_db.query(TuronAdminRequest)
-        if status is not None:
-            q = q.filter(TuronAdminRequest.status == status)
+        if accepted is not None:
+            q = q.filter(TuronAdminRequest.status == accepted)
         if branch_id is not None:
             q = q.filter(TuronAdminRequest.branch_id == branch_id)
         rows.extend(_serialize_turon(r, turon_db) for r in q.all())
