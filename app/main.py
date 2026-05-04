@@ -22,6 +22,7 @@ from .routers.v1.management import (
     mission_subtasks, mission_attachments, mission_comments, mission_proofs,
     notifications, statistics, dividends, investments,
     projects, sections, combined, telegram_bot, branch_loans,
+    admin_requests,
 )
 from .routers.v1.gennis import detail as gennis_detail
 from .routers.v1.turon import (
@@ -152,6 +153,7 @@ app.include_router(overhead_types.router, prefix=V1)
 app.include_router(dividends.router, prefix=V1)
 app.include_router(investments.router, prefix=V1)
 app.include_router(branch_loans.router, prefix=V1)
+app.include_router(admin_requests.router, prefix=V1)
 app.include_router(projects.router, prefix=V1)
 app.include_router(sections.router, prefix=V1)
 app.include_router(combined.router, prefix=V1)

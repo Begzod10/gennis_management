@@ -59,16 +59,16 @@ def _sync_create(gennis_db: Session, turon_db: Session, local_obj: OverheadType)
 
 
 def _sync_update(gennis_db: Session, turon_db: Session, local_obj: OverheadType):
-    """Propagate name + changeable to every per-location/per-branch copy.
-    Cost is intentionally NOT synced — each copy is edited individually because
-    fixed (non-changeable) types have different costs per location/branch.
+    """Propagate name only to every per-location/per-branch copy.
+    Cost and changeable are NOT synced from management — each per-copy value is
+    owned and edited locally inside Gennis / Turon (see overhead_type PATCH
+    routes in those projects). The management update touches only the name.
     """
     gennis_records = gennis_db.query(GennisOverheadType).filter(
         GennisOverheadType.management_id == local_obj.id
     ).all()
     for g in gennis_records:
         g.name = local_obj.name
-        g.changeable = local_obj.changeable
     gennis_db.commit()
 
     turon_records = turon_db.query(TuronOverheadType).filter(
@@ -76,7 +76,6 @@ def _sync_update(gennis_db: Session, turon_db: Session, local_obj: OverheadType)
     ).all()
     for t in turon_records:
         t.name = local_obj.name
-        t.changeable = local_obj.changeable
     turon_db.commit()
 
 

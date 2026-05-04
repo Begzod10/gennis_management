@@ -458,3 +458,17 @@ class GennisApiLog(GennisBase):
     user_id = Column(Integer, nullable=True)
     response_time_ms = Column(Float, nullable=True)
     created_at = Column(DateTime, nullable=True)
+
+
+class GennisAdminRequest(GennisBase):
+    __tablename__ = "admin_request"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255))
+    description = Column(Text, nullable=True)
+    deadline = Column(Date, nullable=True)
+    comment = Column(Text, nullable=True)
+    status = Column(Boolean, default=False, nullable=False)
+    branch_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=True)

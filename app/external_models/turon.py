@@ -778,3 +778,17 @@ class TuronApiLog(TuronBase):
     user_id = Column(BigInteger, nullable=True)
     response_time_ms = Column(Float, nullable=True)
     created_at = Column(DateTime, nullable=True)
+
+
+class TuronAdminRequest(TuronBase):
+    __tablename__ = "report_adminrequest"
+    id = Column(BigInteger, primary_key=True)
+    name = Column(String(255), nullable=True)
+    description = Column(Text, nullable=True)
+    deadline = Column(Date, nullable=True)
+    comment = Column(Text, nullable=True)
+    status = Column(Boolean, default=False, nullable=False)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=True)
+    user_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
