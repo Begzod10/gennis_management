@@ -418,6 +418,37 @@ class Overhead(GennisBase):
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
 
 
+class GennisBranchLoan(GennisBase):
+    __tablename__ = "branch_loan"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(Integer, nullable=True, unique=True)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
+
+    counterparty_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    counterparty_name = Column(String, nullable=True)
+    counterparty_surname = Column(String, nullable=True)
+    counterparty_phone = Column(String, nullable=True)
+
+    direction = Column(String(8), nullable=False)
+    principal_amount = Column(Integer, nullable=False)
+
+    issued_date = Column(DateTime, nullable=False)
+    due_date = Column(DateTime, nullable=True)
+    settled_date = Column(DateTime, nullable=True)
+
+    reason = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+
+    status = Column(String(12), default="active")
+    cancelled_reason = Column(String, nullable=True)
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+    deleted = Column(Boolean, default=False)
+
+
 class GennisApiLog(GennisBase):
     __tablename__ = "api_log"
     id = Column(Integer, primary_key=True)

@@ -703,3 +703,91 @@ class OverheadTypeOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# --- Branch Loan ---
+
+class BranchLoanDirection(str, Enum):
+    OUT = "out"   # branch lent
+    IN = "in"     # branch borrowed
+
+
+class BranchLoanStatus(str, Enum):
+    ACTIVE = "active"
+    SETTLED = "settled"
+    CANCELLED = "cancelled"
+
+
+class BranchLoanSource(str, Enum):
+    GENNIS = "gennis"
+    TURON = "turon"
+
+
+class BranchLoanCreate(BaseModel):
+    source: BranchLoanSource
+    location_id: Optional[int] = None  # required when source=gennis
+    branch_id: Optional[int] = None    # required when source=turon
+
+    direction: BranchLoanDirection
+    principal_amount: int
+    issued_date: date
+    due_date: Optional[date] = None
+    payment_type: Optional[str] = None
+
+    counterparty_user_id: Optional[int] = None
+    counterparty_name: Optional[str] = None
+    counterparty_surname: Optional[str] = None
+    counterparty_phone: Optional[str] = None
+
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BranchLoanUpdate(BaseModel):
+    due_date: Optional[date] = None
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BranchLoanRepay(BaseModel):
+    amount: int
+    payment_type: Optional[str] = None
+    date: date
+    reason: Optional[str] = None
+
+
+class BranchLoanCancel(BaseModel):
+    cancelled_reason: str
+
+
+class BranchLoanOut(BaseModel):
+    id: int
+    source: str
+    location_id: Optional[int]
+    branch_id: Optional[int]
+
+    counterparty_user_id: Optional[int]
+    counterparty_name: Optional[str]
+    counterparty_surname: Optional[str]
+    counterparty_phone: Optional[str]
+
+    direction: str
+    principal_amount: int
+    payment_type: Optional[str]
+
+    issued_date: date
+    due_date: Optional[date]
+    settled_date: Optional[date]
+
+    reason: Optional[str]
+    notes: Optional[str]
+
+    status: str
+    cancelled_reason: Optional[str]
+
+    created_by_id: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    deleted: bool
+
+    model_config = {"from_attributes": True}
+
+

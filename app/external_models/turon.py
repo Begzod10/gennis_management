@@ -85,6 +85,37 @@ class OverheadType(TuronBase):
     deleted = Column(Boolean, default=False)
 
 
+class TuronBranchLoan(TuronBase):
+    __tablename__ = "branch_branchloan"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=False)
+
+    counterparty_id = Column(BigInteger, nullable=True)
+    counterparty_name = Column(String(200), nullable=True)
+    counterparty_surname = Column(String(200), nullable=True)
+    counterparty_phone = Column(String(50), nullable=True)
+
+    direction = Column(String(8), nullable=False)
+    principal_amount = Column(BigInteger, nullable=False)
+
+    issued_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=True)
+    settled_date = Column(Date, nullable=True)
+
+    reason = Column(String(500), nullable=True)
+    notes = Column(String, nullable=True)
+
+    status = Column(String(12), default="active")
+    cancelled_reason = Column(String(500), nullable=True)
+
+    created_by_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+    deleted = Column(Boolean, default=False)
+
+
 class OverheadTypeLog(TuronBase):
     __tablename__ = "overhead_overheadtypelog"
     id = Column(BigInteger, primary_key=True)

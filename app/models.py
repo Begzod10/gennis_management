@@ -433,3 +433,42 @@ class ApiLog(Base):
     user_id = Column(BigInteger, nullable=True, index=True)
     response_time_ms = Column(Float, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), index=True)
+
+
+class BranchLoan(Base):
+    """A loan agreement (branch-level). Each loan is a long-lived agreement
+    settled by one or more BranchLoanTransaction rows on the source side."""
+    __tablename__ = "branch_loan"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    source = Column(String(50), nullable=False)  # 'gennis' or 'turon'
+    location_id = Column(Integer, nullable=True)   # Gennis: locations.id
+    branch_id = Column(BigInteger, nullable=True)  # Turon: branch.id
+
+    # Counterparty: either a User in the source system, or a manual name
+    counterparty_user_id = Column(BigInteger, nullable=True)
+    counterparty_name = Column(String(255), nullable=True)
+    counterparty_surname = Column(String(255), nullable=True)
+    counterparty_phone = Column(String(50), nullable=True)
+
+    direction = Column(String(8), nullable=False)  # 'out' branch lent | 'in' branch borrowed
+    principal_amount = Column(BigInteger, nullable=False)
+    payment_type = Column(String(50), nullable=True)  # for the disbursement transaction
+
+    issued_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=True)
+    settled_date = Column(Date, nullable=True)
+
+    reason = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+
+    status = Column(String(12), nullable=False, default="active")  # active | settled | cancelled
+    cancelled_reason = Column(String(500), nullable=True)
+
+    created_by_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    deleted = Column(Boolean, nullable=False, default=False)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])

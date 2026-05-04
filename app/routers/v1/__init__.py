@@ -2,6 +2,7 @@ from . import auth
 from .accountant import overhead_types
 
 from .management import (
+    branch_loans,
     branches, combined, dividends, investments, jobs,
     missions, mission_attachments, mission_comments,
     mission_proofs, mission_subtasks,
