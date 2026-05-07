@@ -191,7 +191,10 @@ def list_branch_transactions(
 ):
     rows: List[dict] = []
 
-    if source in (None, "gennis"):
+    include_gennis = source in (None, "gennis") and branch_id is None
+    include_turon = source in (None, "turon") and location_id is None
+
+    if include_gennis:
         q = gennis_db.query(GennisBranchTransaction)
         if not include_deleted:
             q = q.filter(GennisBranchTransaction.deleted.is_(False))
@@ -203,7 +206,7 @@ def list_branch_transactions(
             q = q.filter(GennisBranchTransaction.is_give == is_give)
         rows.extend(_serialize_gennis_tx(t, gennis_db) for t in q.order_by(GennisBranchTransaction.id.desc()).all())
 
-    if source in (None, "turon"):
+    if include_turon:
         q = turon_db.query(TuronBranchTransaction)
         if not include_deleted:
             q = q.filter(TuronBranchTransaction.deleted.is_(False))
