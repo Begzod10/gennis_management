@@ -449,6 +449,41 @@ class GennisBranchLoan(GennisBase):
     deleted = Column(Boolean, default=False)
 
 
+class GennisBranchPayment(GennisBase):
+    __tablename__ = "branch_payment"
+    id = Column(Integer, primary_key=True)
+    calendar_month = Column(Integer, ForeignKey("calendarmonth.id"), nullable=True)
+    calendar_year = Column(Integer, ForeignKey("calendaryear.id"), nullable=True)
+    account_period_id = Column(Integer, nullable=True)
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"), nullable=True)
+    payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"), nullable=True)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    editor_balance_id = Column(Integer, nullable=True)
+    book_order_id = Column(Integer, nullable=True)
+    payment_sum = Column(Integer, nullable=True)
+
+
+class GennisBranchTransaction(GennisBase):
+    __tablename__ = "branchtransaction"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(Integer, nullable=True, unique=True)
+    amount = Column(Integer, nullable=False)
+    is_give = Column(Boolean, nullable=False)
+    reason = Column(String, nullable=True)
+    person_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    person_name = Column(String, nullable=True)
+    person_surname = Column(String, nullable=True)
+    person_phone = Column(String, nullable=True)
+    payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"), nullable=False)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"), nullable=False)
+    calendar_month = Column(Integer, ForeignKey("calendarmonth.id"), nullable=False)
+    calendar_year = Column(Integer, ForeignKey("calendaryear.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    loan_id = Column(Integer, ForeignKey("branch_loan.id"), nullable=True)
+    deleted = Column(Boolean, default=False)
+
+
 class GennisApiLog(GennisBase):
     __tablename__ = "api_log"
     id = Column(Integer, primary_key=True)

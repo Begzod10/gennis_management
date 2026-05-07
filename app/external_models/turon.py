@@ -116,6 +116,26 @@ class TuronBranchLoan(TuronBase):
     deleted = Column(Boolean, default=False)
 
 
+class TuronBranchTransaction(TuronBase):
+    __tablename__ = "branch_branchtransaction"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    amount = Column(BigInteger, nullable=False)
+    is_give = Column(Boolean, nullable=False)
+    reason = Column(String(500), nullable=True)
+    person_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    person_name = Column(String(200), nullable=True)
+    person_surname = Column(String(200), nullable=True)
+    person_phone = Column(String(50), nullable=True)
+    payment_type_id = Column(BigInteger, ForeignKey("payments_paymenttypes.id"), nullable=False)
+    branch_id = Column(BigInteger, ForeignKey("branch_branch.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    loan_id = Column(BigInteger, ForeignKey("branch_branchloan.id"), nullable=True)
+    created_by_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    deleted = Column(Boolean, default=False)
+
+
 class OverheadTypeLog(TuronBase):
     __tablename__ = "overhead_overheadtypelog"
     id = Column(BigInteger, primary_key=True)
