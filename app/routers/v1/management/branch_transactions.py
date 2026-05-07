@@ -189,10 +189,23 @@ def list_branch_transactions(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
-    rows: List[dict] = []
+    if source == "gennis" and branch_id is not None:
+        raise HTTPException(status_code=400, detail="branch_id does not apply to source=gennis (use location_id)")
+    if source == "turon" and location_id is not None:
+        raise HTTPException(status_code=400, detail="location_id does not apply to source=turon (use branch_id)")
+    if loan_id is not None and source is None:
+        raise HTTPException(status_code=400, detail="loan_id requires source (loan IDs are not unique across systems)")
 
-    include_gennis = source in (None, "gennis") and branch_id is None
-    include_turon = source in (None, "turon") and location_id is None
+    if source is not None:
+        include_gennis = source == "gennis"
+        include_turon = source == "turon"
+    else:
+        scope_to_turon = branch_id is not None and location_id is None
+        scope_to_gennis = location_id is not None and branch_id is None
+        include_gennis = not scope_to_turon
+        include_turon = not scope_to_gennis
+
+    rows: List[dict] = []
 
     if include_gennis:
         q = gennis_db.query(GennisBranchTransaction)
