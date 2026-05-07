@@ -1,7 +1,8 @@
 from datetime import date as dt_date
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import (
@@ -9,8 +10,16 @@ from app.database import (
     get_gennis_write_db,
     get_turon_write_db,
 )
-from app.external_models.gennis import GennisBranchLoan
-from app.external_models.turon import TuronBranchLoan
+from app.external_models.gennis import (
+    GennisBranchLoan,
+    Locations as GennisLocations,
+    Users as GennisUsers,
+)
+from app.external_models.turon import (
+    Branch as TuronBranch,
+    TuronBranchLoan,
+    TuronCustomUser,
+)
 from app.models import BranchLoan
 from app.schemas import (
     BranchLoanCancel,
@@ -21,6 +30,8 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/branch-loans", tags=["Branch Loans"])
+
+ExternalSource = Literal["gennis", "turon"]
 
 
 # ── Sync helpers ──────────────────────────────────────────────────────────────
@@ -170,6 +181,208 @@ def list_loans(
         q = q.filter(BranchLoan.counterparty_user_id == counterparty_user_id)
 
     return q.order_by(BranchLoan.id.desc()).all()
+
+
+# ── External (read-only proxy) ────────────────────────────────────────────────
+
+
+class ExternalCounterparty(BaseModel):
+    id: Optional[int]
+    name: Optional[str]
+    surname: Optional[str]
+    phone: Optional[str]
+
+
+class ExternalBranchLoanOut(BaseModel):
+    source: ExternalSource
+    id: int
+    management_id: Optional[int]
+    location_id: Optional[int]
+    location_name: Optional[str]
+    branch_id: Optional[int]
+    branch_name: Optional[str]
+    counterparty: ExternalCounterparty
+    direction: str
+    principal_amount: int
+    issued_date: Optional[str]
+    due_date: Optional[str]
+    settled_date: Optional[str]
+    reason: Optional[str]
+    notes: Optional[str]
+    status: str
+    cancelled_reason: Optional[str]
+    deleted: bool
+
+
+def _fmt_date(value) -> Optional[str]:
+    return value.strftime("%Y-%m-%d") if value else None
+
+
+def _serialize_external_gennis(loan: GennisBranchLoan, db: Session) -> dict:
+    loc = (
+        db.query(GennisLocations).filter(GennisLocations.id == loan.location_id).first()
+        if loan.location_id else None
+    )
+    cp_name = cp_surname = None
+    if loan.counterparty_id:
+        u = db.query(GennisUsers).filter(GennisUsers.id == loan.counterparty_id).first()
+        if u:
+            cp_name, cp_surname = u.name, u.surname
+
+    return {
+        "source": "gennis",
+        "id": loan.id,
+        "management_id": loan.management_id,
+        "location_id": loan.location_id,
+        "location_name": loc.name if loc else None,
+        "branch_id": None,
+        "branch_name": None,
+        "counterparty": {
+            "id": loan.counterparty_id,
+            "name": cp_name or loan.counterparty_name,
+            "surname": cp_surname or loan.counterparty_surname,
+            "phone": loan.counterparty_phone,
+        },
+        "direction": loan.direction,
+        "principal_amount": int(loan.principal_amount or 0),
+        "issued_date": _fmt_date(loan.issued_date),
+        "due_date": _fmt_date(loan.due_date),
+        "settled_date": _fmt_date(loan.settled_date),
+        "reason": loan.reason,
+        "notes": loan.notes,
+        "status": loan.status,
+        "cancelled_reason": loan.cancelled_reason,
+        "deleted": bool(loan.deleted),
+    }
+
+
+def _serialize_external_turon(loan: TuronBranchLoan, db: Session) -> dict:
+    br = (
+        db.query(TuronBranch).filter(TuronBranch.id == loan.branch_id).first()
+        if loan.branch_id else None
+    )
+    cp_name = cp_surname = cp_phone = None
+    if loan.counterparty_id:
+        u = db.query(TuronCustomUser).filter(TuronCustomUser.id == loan.counterparty_id).first()
+        if u:
+            cp_name, cp_surname = u.name, u.surname
+            cp_phone = getattr(u, "phone", None)
+
+    return {
+        "source": "turon",
+        "id": loan.id,
+        "management_id": loan.management_id,
+        "location_id": None,
+        "location_name": None,
+        "branch_id": loan.branch_id,
+        "branch_name": br.name if br else None,
+        "counterparty": {
+            "id": loan.counterparty_id,
+            "name": cp_name or loan.counterparty_name,
+            "surname": cp_surname or loan.counterparty_surname,
+            "phone": cp_phone or loan.counterparty_phone,
+        },
+        "direction": loan.direction,
+        "principal_amount": int(loan.principal_amount or 0),
+        "issued_date": _fmt_date(loan.issued_date),
+        "due_date": _fmt_date(loan.due_date),
+        "settled_date": _fmt_date(loan.settled_date),
+        "reason": loan.reason,
+        "notes": loan.notes,
+        "status": loan.status,
+        "cancelled_reason": loan.cancelled_reason,
+        "deleted": bool(loan.deleted),
+    }
+
+
+@router.get("/external", response_model=List[ExternalBranchLoanOut])
+def list_external_loans(
+    source: Optional[ExternalSource] = Query(None, description="Filter to one source: 'gennis' or 'turon'"),
+    branch_id: Optional[int] = Query(None, description="Filter to one Turon branch"),
+    location_id: Optional[int] = Query(None, description="Filter to one Gennis location"),
+    status: Optional[str] = Query(None, pattern="^(active|settled|cancelled)$"),
+    direction: Optional[str] = Query(None, pattern="^(out|in)$"),
+    counterparty_id: Optional[int] = Query(None, description="Within selected source"),
+    only_unsynced: bool = Query(False, description="Only rows whose management_id IS NULL"),
+    include_deleted: bool = Query(False),
+    gennis_db: Session = Depends(get_gennis_write_db),
+    turon_db: Session = Depends(get_turon_write_db),
+):
+    """Read branch_loan rows directly from Gennis (branch_loan) and Turon
+    (branch_branchloan). Useful for surfacing loans created on the source
+    systems that haven't been (or won't be) mirrored into management."""
+    if source == "gennis" and branch_id is not None:
+        raise HTTPException(status_code=400, detail="branch_id does not apply to source=gennis (use location_id)")
+    if source == "turon" and location_id is not None:
+        raise HTTPException(status_code=400, detail="location_id does not apply to source=turon (use branch_id)")
+
+    if source is not None:
+        include_gennis = source == "gennis"
+        include_turon = source == "turon"
+    else:
+        scope_to_turon = branch_id is not None and location_id is None
+        scope_to_gennis = location_id is not None and branch_id is None
+        include_gennis = not scope_to_turon
+        include_turon = not scope_to_gennis
+
+    rows: List[dict] = []
+
+    if include_gennis:
+        q = gennis_db.query(GennisBranchLoan)
+        if not include_deleted:
+            q = q.filter(GennisBranchLoan.deleted.is_(False))
+        if location_id is not None:
+            q = q.filter(GennisBranchLoan.location_id == location_id)
+        if status:
+            q = q.filter(GennisBranchLoan.status == status)
+        if direction:
+            q = q.filter(GennisBranchLoan.direction == direction)
+        if counterparty_id is not None and source == "gennis":
+            q = q.filter(GennisBranchLoan.counterparty_id == counterparty_id)
+        if only_unsynced:
+            q = q.filter(GennisBranchLoan.management_id.is_(None))
+        rows.extend(_serialize_external_gennis(l, gennis_db) for l in q.order_by(GennisBranchLoan.id.desc()).all())
+
+    if include_turon:
+        q = turon_db.query(TuronBranchLoan)
+        if not include_deleted:
+            q = q.filter(TuronBranchLoan.deleted.is_(False))
+        if branch_id is not None:
+            q = q.filter(TuronBranchLoan.branch_id == branch_id)
+        if status:
+            q = q.filter(TuronBranchLoan.status == status)
+        if direction:
+            q = q.filter(TuronBranchLoan.direction == direction)
+        if counterparty_id is not None and source == "turon":
+            q = q.filter(TuronBranchLoan.counterparty_id == counterparty_id)
+        if only_unsynced:
+            q = q.filter(TuronBranchLoan.management_id.is_(None))
+        rows.extend(_serialize_external_turon(l, turon_db) for l in q.order_by(TuronBranchLoan.id.desc()).all())
+
+    rows.sort(key=lambda r: r["issued_date"] or "", reverse=True)
+    return rows
+
+
+@router.get("/external/{source}/{loan_id}", response_model=ExternalBranchLoanOut)
+def get_external_loan(
+    source: ExternalSource,
+    loan_id: int,
+    gennis_db: Session = Depends(get_gennis_write_db),
+    turon_db: Session = Depends(get_turon_write_db),
+):
+    if source == "gennis":
+        loan = gennis_db.query(GennisBranchLoan).filter(GennisBranchLoan.id == loan_id).first()
+        if not loan:
+            raise HTTPException(status_code=404, detail="Gennis branch loan not found")
+        return _serialize_external_gennis(loan, gennis_db)
+
+    loan = turon_db.query(TuronBranchLoan).filter(TuronBranchLoan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Turon branch loan not found")
+    return _serialize_external_turon(loan, turon_db)
+
+
+# ── Management-owned (writes sync to source) ──────────────────────────────────
 
 
 @router.get("/{loan_id}", response_model=BranchLoanOut)
