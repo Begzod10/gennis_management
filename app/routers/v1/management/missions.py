@@ -699,6 +699,15 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
     """Return active users the creator is allowed to assign missions to."""
     base = db.query(User).filter(User.is_active == True, User.deleted == False)
 
+    def _dedup_with_self(users: List[User]) -> List[User]:
+        # _validate_role_assignment short-circuits true when creator.id == executor.id
+        # (line 207-208), so the eligible list must always include the creator —
+        # but never twice when the role-filtered query already contains them.
+        ids_seen = {u.id for u in users}
+        if creator.is_active and not creator.deleted and creator.id not in ids_seen:
+            users.append(creator)
+        return users
+
     if creator.role in OWNER_ROLES or channel == "service_request":
         return base.all()
 
@@ -710,11 +719,11 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
                 Project.deleted == False,
             ).first()
             if not project:
-                return []
+                return _dedup_with_self([])
             member_ids = db.query(ProjectMember.user_id).filter(
                 ProjectMember.project_id == project_id
             ).subquery()
-            return base.filter(User.id.in_(member_ids)).all()
+            return _dedup_with_self(base.filter(User.id.in_(member_ids)).all())
         if section_id:
             section = db.query(Section).filter(
                 Section.id == section_id,
@@ -722,18 +731,17 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
                 Section.deleted == False,
             ).first()
             if not section:
-                return []
+                return _dedup_with_self([])
             member_ids = db.query(SectionMember.user_id).filter(
                 SectionMember.section_id == section_id
             ).subquery()
-            return base.filter(User.id.in_(member_ids)).all()
-        return []
+            return _dedup_with_self(base.filter(User.id.in_(member_ids)).all())
+        return _dedup_with_self([])  # manager without project/section: self only
 
     allowed_roles = ROLE_CAN_ASSIGN.get(creator.role, set())
     if not allowed_roles:
-        return [creator]  # only self-assign allowed
-    candidates = base.filter(User.role.in_(allowed_roles)).all()
-    return candidates + [creator]  # creator can always assign to themselves
+        return _dedup_with_self([])  # only self-assign allowed
+    return _dedup_with_self(base.filter(User.role.in_(allowed_roles)).all())
 
 
 def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
