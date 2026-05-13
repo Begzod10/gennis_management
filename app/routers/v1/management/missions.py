@@ -783,16 +783,25 @@ def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
         if pm.project and not pm.project.deleted
     ]
 
+    # Missions the user actually finished — only count them as the final executor.
     completed_count = db.query(Mission).filter(
         Mission.executor_id == user.id,
         Mission.deleted == False,
         Mission.status.in_(["completed", "approved"]),
     ).count()
+    # Past mission TITLES — include redirected-away missions too so we don't lose
+    # signal when a user worked on something before it was reassigned to someone
+    # else. Recent missions still on their plate (executor_id == user.id) AND
+    # missions originally assigned to them (original_executor_id == user.id) both
+    # count as "things this person has touched."
     recent_titles = [
         m.title
         for m in db.query(Mission.title)
         .filter(
-            Mission.executor_id == user.id,
+            or_(
+                Mission.executor_id == user.id,
+                Mission.original_executor_id == user.id,
+            ),
             Mission.deleted == False,
         )
         .order_by(Mission.created_at.desc())
