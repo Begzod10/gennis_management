@@ -418,6 +418,21 @@ class Overhead(GennisBase):
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
 
 
+class OverheadTypeLog(GennisBase):
+    __tablename__ = "overheadtypelog"
+    id = Column(Integer, primary_key=True)
+    overhead_type_id = Column(Integer, ForeignKey("overheadtype.id"), nullable=False)
+    cost = Column(Integer, nullable=False)
+    is_paid = Column(Boolean, default=False, nullable=False)
+    is_prepaid = Column(Boolean, default=False, nullable=False)
+    paid_date = Column(DateTime, nullable=True)
+    overhead_id = Column(Integer, ForeignKey("overhead.id"), nullable=True)
+    location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    calendar_month = Column(Integer, ForeignKey("calendarmonth.id"), nullable=False)
+    calendar_year = Column(Integer, ForeignKey("calendaryear.id"), nullable=False)
+    deleted = Column(Boolean, default=False)
+
+
 class GennisBranchLoan(GennisBase):
     __tablename__ = "branch_loan"
     id = Column(Integer, primary_key=True)

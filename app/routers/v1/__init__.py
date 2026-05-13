@@ -5,6 +5,7 @@ from .management import (
     admin_requests,
     branch_loans,
     branch_transactions,
+    overhead_type_logs,
     branches, combined, dividends, investments, jobs,
     missions, mission_attachments, mission_comments,
     mission_proofs, mission_subtasks,
