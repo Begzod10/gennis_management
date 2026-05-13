@@ -12,7 +12,7 @@ from app.services.openai_assistant import (
 )
 from app.schemas import (
     MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
-    MissionApprove, MissionHistoryOut,
+    MissionApprove, MissionHistoryOut, UserOut,
 )
 from app.external_models.gennis import GennisMission, GennisMissionHistory, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
 from app.external_models.turon import TuronMission, TuronMissionHistory, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
@@ -761,6 +761,28 @@ def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
         section=", ".join(section_names) or None,
         project=", ".join(project_names) or None,
     )
+
+
+@router.get("/eligible-executors", response_model=List[UserOut])
+def list_eligible_executors(
+    creator_id: int = Query(..., description="ID of the user creating the mission"),
+    channel: str = Query("line_management", description="line_management | project | service_request"),
+    project_id: Optional[int] = Query(None),
+    section_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Users the creator is allowed to assign missions to.
+
+    Same rules as POST /missions/ (and the AI POST /missions/suggest-executor):
+    - owner or channel=service_request → every active user
+    - manager + project_id → members of that project (creator must manage it)
+    - manager + section_id → members of that section (creator must lead it)
+    - any other role → users whose role is in ROLE_CAN_ASSIGN[creator.role] + self
+    """
+    creator = db.query(User).filter(User.id == creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+    return _eligible_executors(creator, channel, project_id, section_id, db)
 
 
 @router.post("/suggest-executor", response_model=List[ExecutorSuggestionOut])
