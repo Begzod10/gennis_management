@@ -4,7 +4,12 @@ from sqlalchemy import or_, func
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
-from app.models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember
+from app.models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job
+from app.services.openai_assistant import (
+    ExecutorCandidate,
+    OpenAIError,
+    suggest_executors,
+)
 from app.schemas import (
     MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
     MissionApprove, MissionHistoryOut,
@@ -669,6 +674,140 @@ def create_bulk_missions(
         _tg(db, mission.reviewer_id, tpl_you_are_reviewer, mission.title, mission.deadline, creator_name)
 
     return created
+
+
+class ExecutorSuggestRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    creator_id: int
+    channel: str = "line_management"
+    project_id: Optional[int] = None
+    section_id: Optional[int] = None
+    branch_id: Optional[int] = None
+    top_k: int = 3
+
+
+class ExecutorSuggestionOut(BaseModel):
+    user_id: int
+    name: str
+    role: str
+    score: float
+    reason: str
+
+
+def _eligible_executors(creator: User, channel: str, project_id: Optional[int], section_id: Optional[int], db: Session) -> List[User]:
+    """Return active users the creator is allowed to assign missions to."""
+    base = db.query(User).filter(User.is_active == True, User.deleted == False)
+
+    if creator.role in OWNER_ROLES or channel == "service_request":
+        return base.all()
+
+    if creator.role == "manager":
+        if project_id:
+            project = db.query(Project).filter(
+                Project.id == project_id,
+                Project.manager_id == creator.id,
+                Project.deleted == False,
+            ).first()
+            if not project:
+                return []
+            member_ids = db.query(ProjectMember.user_id).filter(
+                ProjectMember.project_id == project_id
+            ).subquery()
+            return base.filter(User.id.in_(member_ids)).all()
+        if section_id:
+            section = db.query(Section).filter(
+                Section.id == section_id,
+                Section.leader_id == creator.id,
+                Section.deleted == False,
+            ).first()
+            if not section:
+                return []
+            member_ids = db.query(SectionMember.user_id).filter(
+                SectionMember.section_id == section_id
+            ).subquery()
+            return base.filter(User.id.in_(member_ids)).all()
+        return []
+
+    allowed_roles = ROLE_CAN_ASSIGN.get(creator.role, set())
+    if not allowed_roles:
+        return [creator]  # only self-assign allowed
+    candidates = base.filter(User.role.in_(allowed_roles)).all()
+    return candidates + [creator]  # creator can always assign to themselves
+
+
+def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
+    job_name: Optional[str] = None
+    if user.job_id:
+        job = db.query(Job).filter(Job.id == user.job_id).first()
+        job_name = job.name if job else None
+
+    section_names = [
+        sm.section.name
+        for sm in user.section_memberships
+        if sm.section and not sm.section.deleted
+    ]
+    project_names = [
+        pm.project.name
+        for pm in user.project_memberships
+        if pm.project and not pm.project.deleted
+    ]
+
+    return ExecutorCandidate(
+        id=user.id,
+        name=f"{user.name} {user.surname}".strip(),
+        role=user.role,
+        job=job_name,
+        section=", ".join(section_names) or None,
+        project=", ".join(project_names) or None,
+    )
+
+
+@router.post("/suggest-executor", response_model=List[ExecutorSuggestionOut])
+def suggest_executor(
+    data: ExecutorSuggestRequest,
+    db: Session = Depends(get_db),
+):
+    """Use the configured LLM to suggest the best executors for a draft mission."""
+    if not data.title.strip():
+        raise HTTPException(status_code=400, detail="title is required")
+
+    creator = db.query(User).filter(User.id == data.creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+
+    eligible = _eligible_executors(creator, data.channel, data.project_id, data.section_id, db)
+    if not eligible:
+        return []
+
+    candidates = [_to_candidate(u, db) for u in eligible]
+    candidate_index = {c.id: c for c in candidates}
+
+    try:
+        suggestions = suggest_executors(
+            title=data.title,
+            description=data.description,
+            candidates=candidates,
+            top_k=max(1, min(data.top_k, 10)),
+        )
+    except OpenAIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    result: List[ExecutorSuggestionOut] = []
+    for s in suggestions:
+        cand = candidate_index.get(s.user_id)
+        if not cand:
+            continue
+        result.append(
+            ExecutorSuggestionOut(
+                user_id=s.user_id,
+                name=cand.name,
+                role=cand.role,
+                score=s.score,
+                reason=s.reason,
+            )
+        )
+    return result
 
 
 @router.get("/", response_model=List[MissionOut])
