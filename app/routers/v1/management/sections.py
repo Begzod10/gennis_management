@@ -73,8 +73,11 @@ def delete_section(section_id: int, db: Session = Depends(get_db)):
 @router.post("/{section_id}/members", response_model=SectionMemberOut, status_code=201)
 def add_member(section_id: int, data: SectionMemberAdd, db: Session = Depends(get_db)):
     _get_section_or_404(db, section_id)
-    if not db.query(User).filter(User.id == data.user_id).first():
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.role == "owner":
+        raise HTTPException(status_code=400, detail="Owners cannot be section members")
     existing = (
         db.query(SectionMember)
         .filter(SectionMember.section_id == section_id, SectionMember.user_id == data.user_id)
@@ -123,6 +126,10 @@ def list_members(section_id: int, db: Session = Depends(get_db)):
     return (
         db.query(SectionMember)
         .options(joinedload(SectionMember.user))
-        .filter(SectionMember.section_id == section_id)
+        .join(User, User.id == SectionMember.user_id)
+        .filter(
+            SectionMember.section_id == section_id,
+            User.role != "owner",
+        )
         .all()
     )

@@ -723,7 +723,12 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
             member_ids = db.query(ProjectMember.user_id).filter(
                 ProjectMember.project_id == project_id
             ).subquery()
-            return _dedup_with_self(base.filter(User.id.in_(member_ids)).all())
+            return _dedup_with_self(
+                base.filter(
+                    User.id.in_(member_ids),
+                    User.role.notin_(OWNER_ROLES),
+                ).all()
+            )
         if section_id:
             section = db.query(Section).filter(
                 Section.id == section_id,
@@ -735,7 +740,12 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
             member_ids = db.query(SectionMember.user_id).filter(
                 SectionMember.section_id == section_id
             ).subquery()
-            return _dedup_with_self(base.filter(User.id.in_(member_ids)).all())
+            return _dedup_with_self(
+                base.filter(
+                    User.id.in_(member_ids),
+                    User.role.notin_(OWNER_ROLES),
+                ).all()
+            )
         return _dedup_with_self([])  # manager without project/section: self only
 
     allowed_roles = ROLE_CAN_ASSIGN.get(creator.role, set())

@@ -84,8 +84,11 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
 @router.post("/{project_id}/members", response_model=ProjectMemberOut, status_code=201)
 def add_member(project_id: int, data: ProjectMemberAdd, db: Session = Depends(get_db)):
     _get_project_or_404(db, project_id)
-    if not db.query(User).filter(User.id == data.user_id).first():
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.role == "owner":
+        raise HTTPException(status_code=400, detail="Owners cannot be project members")
     existing = (
         db.query(ProjectMember)
         .filter(ProjectMember.project_id == project_id, ProjectMember.user_id == data.user_id)
@@ -120,7 +123,11 @@ def list_members(project_id: int, db: Session = Depends(get_db)):
     return (
         db.query(ProjectMember)
         .options(joinedload(ProjectMember.user))
-        .filter(ProjectMember.project_id == project_id)
+        .join(User, User.id == ProjectMember.user_id)
+        .filter(
+            ProjectMember.project_id == project_id,
+            User.role != "owner",
+        )
         .all()
     )
 
