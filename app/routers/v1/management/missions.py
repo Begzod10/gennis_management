@@ -789,11 +789,18 @@ def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
         Mission.deleted == False,
         Mission.status.in_(["completed", "approved"]),
     ).count()
-    # Past mission TITLES — include redirected-away missions too so we don't lose
-    # signal when a user worked on something before it was reassigned to someone
-    # else. Recent missions still on their plate (executor_id == user.id) AND
-    # missions originally assigned to them (original_executor_id == user.id) both
-    # count as "things this person has touched."
+    # Past mission TITLES — include every mission this user touched, including
+    # ones they were redirected away from. Sources:
+    #   - Mission.executor_id    → current executor
+    #   - Mission.original_executor_id → most-recent prior executor (Mission only
+    #     keeps the LAST handoff)
+    #   - MissionHistory.executor_id → every executor in a chain redirect
+    #     (A -> B -> C all show up here even though Mission.original_executor_id
+    #     only points at B by the time C owns it)
+    from sqlalchemy import select
+    history_mission_ids = select(MissionHistory.mission_id).where(
+        MissionHistory.executor_id == user.id,
+    )
     recent_titles = [
         m.title
         for m in db.query(Mission.title)
@@ -801,6 +808,7 @@ def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
             or_(
                 Mission.executor_id == user.id,
                 Mission.original_executor_id == user.id,
+                Mission.id.in_(history_mission_ids),
             ),
             Mission.deleted == False,
         )
