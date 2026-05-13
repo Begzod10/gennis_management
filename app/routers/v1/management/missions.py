@@ -708,7 +708,17 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
             users.append(creator)
         return users
 
-    if creator.role in OWNER_ROLES or channel == "service_request":
+    if creator.role in OWNER_ROLES:
+        # Owners assign top-level / unassigned people only; project and section
+        # members are the responsibility of their respective managers / leaders.
+        in_project = db.query(ProjectMember.user_id).subquery()
+        in_section = db.query(SectionMember.user_id).subquery()
+        return base.filter(
+            ~User.id.in_(in_project),
+            ~User.id.in_(in_section),
+        ).all()
+
+    if channel == "service_request":
         return base.all()
 
     if creator.role == "manager":
