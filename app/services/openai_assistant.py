@@ -33,6 +33,8 @@ class ExecutorCandidate:
     section: Optional[str] = None
     project: Optional[str] = None
     branch: Optional[str] = None
+    completed_missions: int = 0
+    recent_mission_titles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -54,16 +56,24 @@ class MissionContext:
 
 _SYSTEM_PROMPT = (
     "You are an assignment assistant for a company task tracker. "
-    "Given a mission title and description, pick the best executors from a "
-    "candidate list. Use each candidate's role, job, section, and project "
-    "memberships as evidence. Prefer specialists whose role/job matches the "
-    "mission's domain. Return strict JSON only — no prose, no markdown."
+    "Given a mission's title, description, and optional project/section/branch "
+    "context, rank the most relevant executors from a candidate list. Use each "
+    "candidate's role, job, current memberships, and especially their past "
+    "mission titles as evidence. Prefer specialists whose role, job, or prior "
+    "missions match the new mission's domain. "
+    "Differentiate candidates: every chosen candidate must have a reason that "
+    "cites something specific about THAT candidate (their job, role, or a past "
+    "mission title) — never reuse the same reason or assign identical scores "
+    "to multiple candidates unless they are genuinely indistinguishable. "
+    "If the input is too vague to differentiate, return only one candidate. "
+    "Return strict JSON only — no prose, no markdown."
 )
 
 
 def _candidates_payload(candidates: List[ExecutorCandidate]) -> list[dict]:
-    return [
-        {
+    payload = []
+    for c in candidates:
+        item = {
             "id": c.id,
             "name": c.name,
             "role": c.role,
@@ -72,8 +82,12 @@ def _candidates_payload(candidates: List[ExecutorCandidate]) -> list[dict]:
             "project": c.project,
             "branch": c.branch,
         }
-        for c in candidates
-    ]
+        if c.completed_missions:
+            item["completed_missions"] = c.completed_missions
+        if c.recent_mission_titles:
+            item["recent_mission_titles"] = list(c.recent_mission_titles)
+        payload.append(item)
+    return payload
 
 
 def _context_lines(ctx: Optional["MissionContext"]) -> str:
@@ -127,7 +141,7 @@ def suggest_executors(
 
     payload = {
         "model": settings.OPENAI_MODEL,
-        "temperature": 0.1,
+        "temperature": 0.4,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},

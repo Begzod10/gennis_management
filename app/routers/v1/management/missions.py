@@ -783,6 +783,23 @@ def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
         if pm.project and not pm.project.deleted
     ]
 
+    completed_count = db.query(Mission).filter(
+        Mission.executor_id == user.id,
+        Mission.deleted == False,
+        Mission.status.in_(["completed", "approved"]),
+    ).count()
+    recent_titles = [
+        m.title
+        for m in db.query(Mission.title)
+        .filter(
+            Mission.executor_id == user.id,
+            Mission.deleted == False,
+        )
+        .order_by(Mission.created_at.desc())
+        .limit(5)
+        .all()
+    ]
+
     return ExecutorCandidate(
         id=user.id,
         name=f"{user.name} {user.surname}".strip(),
@@ -790,6 +807,8 @@ def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
         job=job_name,
         section=", ".join(section_names) or None,
         project=", ".join(project_names) or None,
+        completed_missions=completed_count,
+        recent_mission_titles=tuple(recent_titles),
     )
 
 
