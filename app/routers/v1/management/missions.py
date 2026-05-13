@@ -791,6 +791,8 @@ def suggest_executor(
             top_k=max(1, min(data.top_k, 10)),
         )
     except OpenAIError as exc:
+        import logging
+        logging.getLogger(__name__).warning("suggest-executor failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
 
     result: List[ExecutorSuggestionOut] = []

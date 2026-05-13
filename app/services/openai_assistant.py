@@ -108,19 +108,25 @@ def suggest_executors(
     try:
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, headers=headers, json=payload)
-            resp.raise_for_status()
-            body = resp.json()
     except httpx.HTTPError as exc:
-        logger.warning("OpenAI request failed: %s", exc)
-        raise OpenAIError(f"OpenAI request failed: {exc}") from exc
+        logger.warning("OpenAI transport error: %s url=%s", exc, url)
+        raise OpenAIError(f"OpenAI transport error: {exc}") from exc
+
+    if resp.status_code >= 400:
+        snippet = resp.text[:500].replace("\n", " ")
+        logger.warning(
+            "OpenAI returned %s url=%s body=%s", resp.status_code, url, snippet
+        )
+        raise OpenAIError(f"OpenAI HTTP {resp.status_code}: {snippet}")
 
     try:
+        body = resp.json()
         content = body["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         raw = parsed.get("suggestions", [])
-    except (KeyError, IndexError, json.JSONDecodeError) as exc:
-        logger.warning("Could not parse OpenAI response: %s — body=%s", exc, body)
-        raise OpenAIError("Unparseable response from OpenAI") from exc
+    except (KeyError, IndexError, json.JSONDecodeError, ValueError) as exc:
+        logger.warning("Could not parse OpenAI response: %s — body=%s", exc, resp.text[:500])
+        raise OpenAIError(f"Unparseable OpenAI response: {exc}") from exc
 
     candidate_ids = {c.id for c in candidates}
     suggestions: List[ExecutorSuggestion] = []
