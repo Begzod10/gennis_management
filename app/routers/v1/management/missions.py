@@ -711,8 +711,9 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
     if creator.role in OWNER_ROLES:
         # Owners assign top-level / unassigned people only; project and section
         # members are the responsibility of their respective managers / leaders.
-        in_project = db.query(ProjectMember.user_id).subquery()
-        in_section = db.query(SectionMember.user_id).subquery()
+        from sqlalchemy import select
+        in_project = select(ProjectMember.user_id)
+        in_section = select(SectionMember.user_id)
         return base.filter(
             ~User.id.in_(in_project),
             ~User.id.in_(in_section),
