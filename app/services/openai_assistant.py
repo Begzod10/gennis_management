@@ -42,6 +42,16 @@ class ExecutorSuggestion:
     reason: str
 
 
+@dataclass(frozen=True)
+class MissionContext:
+    """Optional metadata the model uses to rank candidates."""
+    project_name: Optional[str] = None
+    project_description: Optional[str] = None
+    section_name: Optional[str] = None
+    branch_name: Optional[str] = None
+    location_name: Optional[str] = None
+
+
 _SYSTEM_PROMPT = (
     "You are an assignment assistant for a company task tracker. "
     "Given a mission title and description, pick the best executors from a "
@@ -66,11 +76,35 @@ def _candidates_payload(candidates: List[ExecutorCandidate]) -> list[dict]:
     ]
 
 
-def _user_prompt(title: str, description: Optional[str], candidates: List[ExecutorCandidate], top_k: int) -> str:
+def _context_lines(ctx: Optional["MissionContext"]) -> str:
+    if not ctx:
+        return ""
+    parts = []
+    if ctx.project_name:
+        parts.append(f"Project: {ctx.project_name}")
+        if ctx.project_description:
+            parts.append(f"Project description: {ctx.project_description}")
+    if ctx.section_name:
+        parts.append(f"Section: {ctx.section_name}")
+    if ctx.branch_name:
+        parts.append(f"Branch: {ctx.branch_name}")
+    if ctx.location_name:
+        parts.append(f"Location: {ctx.location_name}")
+    return ("\n".join(parts) + "\n") if parts else ""
+
+
+def _user_prompt(
+    title: str,
+    description: Optional[str],
+    candidates: List[ExecutorCandidate],
+    top_k: int,
+    context: Optional["MissionContext"],
+) -> str:
     return (
         f"Mission title: {title}\n"
-        f"Mission description: {description or '(none)'}\n\n"
-        f"Candidates (JSON):\n{json.dumps(_candidates_payload(candidates), ensure_ascii=False)}\n\n"
+        f"Mission description: {description or '(none)'}\n"
+        f"{_context_lines(context)}"
+        f"\nCandidates (JSON):\n{json.dumps(_candidates_payload(candidates), ensure_ascii=False)}\n\n"
         f"Pick up to {top_k} best executors. "
         "Respond as JSON with this exact shape:\n"
         '{"suggestions": [{"user_id": <int>, "score": <float between 0 and 1>, "reason": "<short reason>"}]}'
@@ -83,6 +117,7 @@ def suggest_executors(
     candidates: List[ExecutorCandidate],
     top_k: int = 3,
     timeout: float = 20.0,
+    context: Optional[MissionContext] = None,
 ) -> List[ExecutorSuggestion]:
     """Call the chat completion API and return a ranked list of executor suggestions."""
     if not settings.OPENAI_API_KEY:
@@ -96,7 +131,7 @@ def suggest_executors(
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _user_prompt(title, description, candidates, top_k)},
+            {"role": "user", "content": _user_prompt(title, description, candidates, top_k, context)},
         ],
     }
     headers = {

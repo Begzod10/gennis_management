@@ -7,6 +7,7 @@ from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_d
 from app.models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job
 from app.services.openai_assistant import (
     ExecutorCandidate,
+    MissionContext,
     OpenAIError,
     suggest_executors,
 )
@@ -792,6 +793,45 @@ def _to_candidate(user: User, db: Session) -> ExecutorCandidate:
     )
 
 
+def _build_mission_context(data: "ExecutorSuggestRequest", db: Session) -> Optional[MissionContext]:
+    """Resolve project/section/branch names so the model can ground its choice."""
+    project_name = project_description = None
+    section_name = None
+    branch_name = None
+
+    if data.project_id:
+        project = db.query(Project).filter(
+            Project.id == data.project_id,
+            Project.deleted == False,
+        ).first()
+        if project:
+            project_name = project.name
+            project_description = project.description
+    if data.section_id:
+        section = db.query(Section).filter(
+            Section.id == data.section_id,
+            Section.deleted == False,
+        ).first()
+        if section:
+            section_name = section.name
+    if data.branch_id:
+        branch = db.query(Branch).filter(
+            Branch.id == data.branch_id,
+            Branch.deleted == False,
+        ).first()
+        if branch:
+            branch_name = branch.name
+
+    if not any([project_name, section_name, branch_name]):
+        return None
+    return MissionContext(
+        project_name=project_name,
+        project_description=project_description,
+        section_name=section_name,
+        branch_name=branch_name,
+    )
+
+
 @router.get("/eligible-executors", response_model=List[UserOut])
 def list_eligible_executors(
     creator_id: int = Query(..., description="ID of the user creating the mission"),
@@ -834,12 +874,15 @@ def suggest_executor(
     candidates = [_to_candidate(u, db) for u in eligible]
     candidate_index = {c.id: c for c in candidates}
 
+    context = _build_mission_context(data, db)
+
     try:
         suggestions = suggest_executors(
             title=data.title,
             description=data.description,
             candidates=candidates,
             top_k=max(1, min(data.top_k, 10)),
+            context=context,
         )
     except OpenAIError as exc:
         import logging
