@@ -30,10 +30,14 @@ from app.external_models.gennis import (
     CalendarYear as GennisCalendarYear,
     OverheadType as GennisOverheadType,
     OverheadTypeLog as GennisOverheadTypeLog,
+    OverheadTypeLogPayment as GennisOverheadPayment,
+    PaymentTypes as GennisPaymentTypes,
 )
 from app.external_models.turon import (
     OverheadType as TuronOverheadType,
     OverheadTypeLog as TuronOverheadTypeLog,
+    OverheadTypeLogPayment as TuronOverheadPayment,
+    PaymentTypes as TuronPaymentTypes,
 )
 
 
@@ -51,15 +55,87 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, int]:
     total_count = len(rows)
     paid_count = sum(1 for r in rows if r["is_paid"])
     total_sum = sum(r["cost"] for r in rows)
-    paid_sum = sum(r["cost"] for r in rows if r["is_paid"])
+    paid_sum = sum(r["paid_amount"] for r in rows)
     return {
         "total_count": total_count,
         "paid_count": paid_count,
         "unpaid_count": total_count - paid_count,
         "total_sum": total_sum,
         "paid_sum": paid_sum,
-        "unpaid_sum": total_sum - paid_sum,
+        "unpaid_sum": max(0, total_sum - paid_sum),
     }
+
+
+def _payment_status(cost: int, paid: int) -> str:
+    if paid <= 0:
+        return "unpaid"
+    if paid < cost:
+        return "partial"
+    return "paid"
+
+
+def _fetch_gennis_payments(
+    log_ids: list[int], gennis_db: Session
+) -> dict[int, list[dict[str, Any]]]:
+    if not log_ids:
+        return {}
+    rows = (
+        gennis_db.query(GennisOverheadPayment, GennisPaymentTypes)
+        .outerjoin(
+            GennisPaymentTypes,
+            GennisPaymentTypes.id == GennisOverheadPayment.payment_type_id,
+        )
+        .filter(
+            GennisOverheadPayment.overhead_type_log_id.in_(log_ids),
+            GennisOverheadPayment.deleted == False,
+        )
+        .order_by(GennisOverheadPayment.paid_date)
+        .all()
+    )
+    out: dict[int, list[dict[str, Any]]] = {lid: [] for lid in log_ids}
+    for payment, pt in rows:
+        out[payment.overhead_type_log_id].append({
+            "id": payment.id,
+            "payment_type_id": payment.payment_type_id,
+            "payment_type_name": pt.name if pt else None,
+            "overhead_id": payment.overhead_id,
+            "amount": payment.amount,
+            "paid_date": _format_date(payment.paid_date.date() if payment.paid_date else None),
+            "note": payment.note,
+        })
+    return out
+
+
+def _fetch_turon_payments(
+    log_ids: list[int], turon_db: Session
+) -> dict[int, list[dict[str, Any]]]:
+    if not log_ids:
+        return {}
+    rows = (
+        turon_db.query(TuronOverheadPayment, TuronPaymentTypes)
+        .outerjoin(
+            TuronPaymentTypes,
+            TuronPaymentTypes.id == TuronOverheadPayment.payment_type_id,
+        )
+        .filter(
+            TuronOverheadPayment.overhead_type_log_id.in_(log_ids),
+            TuronOverheadPayment.deleted == False,
+        )
+        .order_by(TuronOverheadPayment.paid_date)
+        .all()
+    )
+    out: dict[int, list[dict[str, Any]]] = {lid: [] for lid in log_ids}
+    for payment, pt in rows:
+        out[payment.overhead_type_log_id].append({
+            "id": payment.id,
+            "payment_type_id": payment.payment_type_id,
+            "payment_type_name": pt.name if pt else None,
+            "overhead_id": payment.overhead_id,
+            "amount": payment.amount,
+            "paid_date": _format_date(payment.paid_date.date() if payment.paid_date else None),
+            "note": payment.note,
+        })
+    return out
 
 
 def _fetch_turon(
@@ -84,22 +160,33 @@ def _fetch_turon(
     elif status == "unpaid":
         q = q.filter(TuronOverheadTypeLog.is_paid == False)
 
-    return [
-        {
+    rows = q.order_by(TuronOverheadTypeLog.id).all()
+    log_ids = [log.id for log, _ in rows]
+    payments_map = _fetch_turon_payments(log_ids, turon_db)
+
+    out: list[dict[str, Any]] = []
+    for log, ot in rows:
+        payments = payments_map.get(log.id, [])
+        paid_amount = sum(p["amount"] for p in payments)
+        cost = log.cost or 0
+        out.append({
             "source": "turon",
             "id": log.id,
             "overhead_type_id": log.overhead_type_id,
             "overhead_type_name": ot.name,
-            "cost": log.cost or 0,
+            "cost": cost,
             "is_paid": bool(log.is_paid),
             "is_prepaid": bool(log.is_prepaid),
             "paid_date": _format_date(log.paid_date.date() if log.paid_date else None),
             "overhead_id": log.overhead_id,
             "branch_id": log.branch_id,
             "date": _format_date(log.date),
-        }
-        for log, ot in q.order_by(TuronOverheadTypeLog.id).all()
-    ]
+            "paid_amount": paid_amount,
+            "remaining_amount": max(0, cost - paid_amount),
+            "payment_status": _payment_status(cost, paid_amount),
+            "payments": payments,
+        })
+    return out
 
 
 def _resolve_gennis_calendar_ids(
@@ -150,13 +237,21 @@ def _fetch_gennis(
     elif status == "unpaid":
         q = q.filter(GennisOverheadTypeLog.is_paid == False)
 
-    return [
-        {
+    rows = q.order_by(GennisOverheadTypeLog.id).all()
+    log_ids = [log.id for log, _ in rows]
+    payments_map = _fetch_gennis_payments(log_ids, gennis_db)
+
+    out: list[dict[str, Any]] = []
+    for log, ot in rows:
+        payments = payments_map.get(log.id, [])
+        paid_amount = sum(p["amount"] for p in payments)
+        cost = log.cost or 0
+        out.append({
             "source": "gennis",
             "id": log.id,
             "overhead_type_id": log.overhead_type_id,
             "overhead_type_name": ot.name,
-            "cost": log.cost or 0,
+            "cost": cost,
             "is_paid": bool(log.is_paid),
             "is_prepaid": bool(log.is_prepaid),
             "paid_date": _format_date(log.paid_date.date() if log.paid_date else None),
@@ -164,9 +259,12 @@ def _fetch_gennis(
             "location_id": log.location_id,
             "calendar_month": log.calendar_month,
             "calendar_year": log.calendar_year,
-        }
-        for log, ot in q.order_by(GennisOverheadTypeLog.id).all()
-    ]
+            "paid_amount": paid_amount,
+            "remaining_amount": max(0, cost - paid_amount),
+            "payment_status": _payment_status(cost, paid_amount),
+            "payments": payments,
+        })
+    return out
 
 
 @router.get("/{month}/{year}")
