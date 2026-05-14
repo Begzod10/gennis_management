@@ -68,7 +68,7 @@ def verify_refresh_token(token: str) -> dict:
 
 def verify_google_token(id_token: str) -> dict:
     """Verify a Google ID token by calling Google's tokeninfo endpoint."""
-    with httpx.Client() as client:
+    with httpx.Client(trust_env=False, timeout=10.0) as client:
         resp = client.get(
             "https://oauth2.googleapis.com/tokeninfo",
             params={"id_token": id_token},
