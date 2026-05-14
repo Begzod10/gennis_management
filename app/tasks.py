@@ -49,6 +49,7 @@ def send_telegram_notification(chat_id: int, text: str):
         return
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
-        httpx.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"}, timeout=5.0)
+        with httpx.Client(timeout=5.0, trust_env=False) as client:
+            client.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
     except Exception:
         pass

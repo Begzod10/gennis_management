@@ -10,7 +10,7 @@ async def send_telegram(chat_id: int, text: str) -> bool:
         return False
     url = _SEND_URL.format(token=settings.TELEGRAM_BOT_TOKEN)
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
             resp = await client.post(url, json={
                 "chat_id": chat_id,
                 "text": text,
