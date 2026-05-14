@@ -155,7 +155,7 @@ def suggest_executors(
     url = f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions"
 
     try:
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, trust_env=False) as client:
             resp = client.post(url, headers=headers, json=payload)
     except httpx.HTTPError as exc:
         logger.warning("OpenAI transport error: %s url=%s", exc, url)
