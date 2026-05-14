@@ -213,6 +213,21 @@ summary so this doc is self-contained:
 | `POST /convert-to-split` / `POST /convert-to-split/` | Migrate a legacy single-pay log into the split-payment model |
 | `POST /pay` / `POST /pay/` (legacy) | Old single-shot full payment. Refuses if splits exist. New UIs should prefer `POST /payments`. |
 
+### Drill-in from the expense lists
+
+Each row returned by the expense-history lists carries optional
+`payment_id` + `overhead_type_log_id` fields when the underlying `Overhead`
+came from a split payment. The frontend can jump straight from
+"cash event in the expense list" into "the bill that drove it":
+
+| Expense list route | Source |
+|---|---|
+| `GET /account/account_info/overhead/?locationId=...` | Gennis |
+| `GET /api/Overhead/overheads/?branch=...` | Turon |
+
+Detailed shape and a React snippet are in
+[`overhead-split-payments.md` §2.3](./overhead-split-payments.md#23-expense-list--new-link-fields-per-row).
+
 ---
 
 ## 3. React integration sketch

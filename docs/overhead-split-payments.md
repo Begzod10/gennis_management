@@ -298,7 +298,74 @@ And the top-level `summary.paid_sum` now adds up `paid_amount` (partial
 payments contribute proportionally) instead of jumping by full `cost` only
 when `is_paid=true`. Old fields stay where they were.
 
-### 2.3 Gennis home_screen overhead bucketing
+### 2.3 Expense list — new link fields per row
+
+The expense-history listings now expose a back-pointer from each `Overhead`
+row to its split-payment context (when applicable), so the UI can let admins
+drill from "list of cash events" into "the bill this payment was for".
+
+| | Gennis | Turon |
+|---|---|---|
+| **URL** | `GET /account/account_info/overhead/` | `GET /api/Overhead/overheads/` |
+
+**New fields on each row** (alongside the existing `id`, `name`, `price`, …):
+
+```json
+{
+  "payment_id":          8,    // OverheadTypeLogPayment.id, or null
+  "overhead_type_log_id": 12   // OverheadTypeLog.id,        or null
+}
+```
+
+Semantics:
+
+- Both `null` → this `Overhead` was created outside the split-payment flow
+  (manual `/account/overhead/...` entry, capital expenditure, legacy single
+  payment that's never been converted, etc.). Display as a regular line item.
+- Both populated → this `Overhead` is one installment of a split-paid log.
+  The UI can:
+  - Show a small "installment" / chain icon next to the amount
+  - Make the row clickable → navigates to the parent log's payment breakdown
+    (e.g., `/overhead-type-logs/<overhead_type_log_id>/payments`)
+  - Fetch the full breakdown with `GET /overhead_type_logs/<id>/payments`
+    (see §1.2)
+
+Implementation: one bulk lookup per page (single `WHERE overhead_id IN (...)`
+SELECT against `OverheadTypeLogPayment`), so the enrichment is O(1) extra
+queries regardless of page size. Rows from the deleted-Overhead view (Gennis
+`?deleted=1`) skip the lookup — those IDs live in a separate table.
+
+**React snippet (renders link when applicable):**
+
+```tsx
+function ExpenseRow({ row }: { row: ExpenseListRow }) {
+  const amount = formatMoney(row.price ?? row.payment_sum);
+  if (row.overhead_type_log_id != null) {
+    return (
+      <tr>
+        <td>{row.name}</td>
+        <td>
+          <Link to={`/overhead-logs/${row.overhead_type_log_id}/payments`}>
+            🔗 {amount}
+          </Link>
+        </td>
+        <td>{row.typePayment ?? row.payment_type_name}</td>
+        <td>{row.date}</td>
+      </tr>
+    );
+  }
+  return (
+    <tr>
+      <td>{row.name}</td>
+      <td>{amount}</td>
+      <td>{row.typePayment ?? row.payment_type_name}</td>
+      <td>{row.date}</td>
+    </tr>
+  );
+}
+```
+
+### 2.4 Gennis home_screen overhead bucketing
 
 `GET /account/account_overhead_total/?month=&year=&location_id=` returns
 `total_gaz` / `total_svet` / `total_suv` / `total_arenda` / `total_other`.
