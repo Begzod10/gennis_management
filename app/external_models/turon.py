@@ -150,6 +150,27 @@ class OverheadTypeLog(TuronBase):
     deleted = Column(Boolean, default=False)
 
 
+class OverheadTypeLogPayment(TuronBase):
+    __tablename__ = "overhead_overheadtypelogpayment"
+    id = Column(BigInteger, primary_key=True)
+    overhead_type_log_id = Column(
+        BigInteger, ForeignKey("overhead_overheadtypelog.id"), nullable=False,
+    )
+    payment_type_id = Column(
+        BigInteger, ForeignKey("payments_paymenttypes.id"), nullable=True,
+    )
+    overhead_id = Column(
+        BigInteger, ForeignKey("overhead_overhead.id"), nullable=True,
+    )
+    amount = Column(Integer, nullable=False)
+    paid_date = Column(DateTime, nullable=False)
+    note = Column(String(500), nullable=True)
+    created_by_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    deleted = Column(Boolean, default=False, nullable=False)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+
+
 class System(TuronBase):
     __tablename__ = "system_system"
     id = Column(BigInteger, primary_key=True)

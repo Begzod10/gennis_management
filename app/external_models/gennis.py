@@ -433,6 +433,23 @@ class OverheadTypeLog(GennisBase):
     deleted = Column(Boolean, default=False)
 
 
+class OverheadTypeLogPayment(GennisBase):
+    __tablename__ = "overheadtypelog_payment"
+    id = Column(Integer, primary_key=True)
+    overhead_type_log_id = Column(
+        Integer, ForeignKey("overheadtypelog.id"), nullable=False,
+    )
+    payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"), nullable=True)
+    overhead_id = Column(Integer, ForeignKey("overhead.id"), nullable=True)
+    amount = Column(Integer, nullable=False)
+    paid_date = Column(DateTime, nullable=False)
+    note = Column(String, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    deleted = Column(Boolean, default=False, nullable=False)
+    management_id = Column(Integer, nullable=True, unique=True)
+
+
 class GennisBranchLoan(GennisBase):
     __tablename__ = "branch_loan"
     id = Column(Integer, primary_key=True)
