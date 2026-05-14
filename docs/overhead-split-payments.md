@@ -176,7 +176,49 @@ then recomputes `is_paid` / `paid_date` / `payment_status`.
 | 400 | `Allaqachon o'chirilgan` |
 | 404 | `Payment topilmadi` |
 
-### 1.4 Convert a legacy single-pay log to split-payment
+### 1.4 Update an OverheadTypeLog (editable fields)
+
+Currently only `cost` is editable. The rest (`is_paid`, `paid_date`,
+`overhead_id`, calendar / type / location FKs) are managed by the system.
+
+| | Gennis | Turon |
+|---|---|---|
+| **Method** | `PATCH` | `PATCH` |
+| **URL** | `/account/overhead_type_logs/<log_id>` | `/api/Overhead/overhead_type_logs/<log_id>/update/` |
+
+**Body (JSON):**
+
+```json
+{ "cost": 5000000 }
+```
+
+**Success (200):**
+
+```json
+{
+  "success": true,
+  "message": "Log yangilandi",
+  "log": { /* updated log with new cost + recomputed status */ }
+}
+```
+
+If the log has split payments, `is_paid` / `paid_date` / `payment_status` are
+recomputed against the new cost (e.g., raising cost from 3M to 5M may flip an
+already-paid log back to `partial`).
+
+**Errors:**
+
+| HTTP | `message` |
+|---|---|
+| 400 | `Yangilanadigan maydonlar yo'q` (empty body) |
+| 400 | `Ruxsat etilgan maydon yo'q (faqat: cost)` (no recognised fields) |
+| 400 | `cost butun son bo'lishi kerak` |
+| 400 | `cost musbat bo'lishi kerak` |
+| 400 | `Yangi cost to'langan summadan kichik bo'lishi mumkin emas (X so'm). Avval to'lovlarni o'chiring.` — body also includes `paid_amount` |
+| 400 | `Log o'chirilgan` |
+| 404 | `Log topilmadi` |
+
+### 1.5 Convert a legacy single-pay log to split-payment
 
 Some logs were paid via the old `/overhead_type_logs/pay` endpoint, which sets
 `log.overhead_id` to a single Overhead row. The new endpoints refuse to add
@@ -385,6 +427,27 @@ export function useConvertToSplit(source: 'gennis' | 'turon', logId: number) {
     },
   });
 }
+
+type UpdateLogInput = { cost?: number };
+
+export function useUpdateLog(source: 'gennis' | 'turon', logId: number) {
+  const qc = useQueryClient();
+  const base = source === 'gennis' ? GENNIS_BASE : TURON_BASE;
+  const path = source === 'gennis'
+    ? `${base}/overhead_type_logs/${logId}`
+    : `${base}/overhead_type_logs/${logId}/update/`;
+
+  return useMutation({
+    mutationFn: async (input: UpdateLogInput) => {
+      const { data } = await axios.patch(path, input);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['overhead-log-payments', source, logId] });
+      qc.invalidateQueries({ queryKey: ['overhead-type-logs'] });
+    },
+  });
+}
 ```
 
 ### 3.2 UI rules
@@ -479,7 +542,21 @@ Expected: exactly one returns 200 with `payment_status=partial` (3M paid), the
 other returns 400 with `remaining_amount: 1000000`. (Without the
 `SELECT FOR UPDATE` fix this would silently allow both, overpaying by 2M.)
 
-### 4.6 Management proxy returns derived totals
+### 4.6 Cost update behaviour
+
+Start with unpaid log `L` (cost = 4M).
+
+| Step | Request | Expected |
+|---|---|---|
+| 1 | `PATCH /<L> {cost: 5000000}` | 200, `cost=5M`, still `unpaid` |
+| 2 | `POST /payments {amount: 5000000}` | 200, `payment_status=paid` |
+| 3 | `PATCH /<L> {cost: 6000000}` | 200, `cost=6M`, `is_paid=false`, `payment_status=partial`, `remaining=1M` (recomputed) |
+| 4 | `PATCH /<L> {cost: 4000000}` | **400** "Yangi cost to'langan summadan kichik bo'lishi mumkin emas (5,000,000 so'm). Avval to'lovlarni o'chiring." |
+| 5 | `PATCH /<L> {cost: 5000000}` | 200, `cost=5M`, back to `paid` |
+| 6 | `PATCH /<L> {}` | 400 "Yangilanadigan maydonlar yo'q" |
+| 7 | `PATCH /<L> {is_paid: true}` | 400 "Ruxsat etilgan maydon yo'q (faqat: cost)" |
+
+### 4.7 Management proxy returns derived totals
 
 ```
 GET /api/v1/overhead-type-logs/5/2026?location_id=3
@@ -489,7 +566,7 @@ Each `data[]` row contains `paid_amount`, `remaining_amount`, `payment_status`,
 and `payments[]`. `summary.paid_sum` equals `Σ data[].paid_amount` — including
 partial contributions. (Pre-fix it equalled `Σ data[].cost where is_paid`.)
 
-### 4.7 Home_screen bucketing (Gennis only)
+### 4.8 Home_screen bucketing (Gennis only)
 
 `GET /account/account_overhead_total/?month=5&year=2026&location_id=3` should
 now show the rent partial payments under `total_arenda`, not `total_other`.
