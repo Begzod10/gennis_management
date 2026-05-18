@@ -1,5 +1,5 @@
 from . import auth
-from .accountant import overhead_types
+from .accountant import overhead_types, dashboard as accountant_dashboard
 
 from .management import (
     admin_requests,

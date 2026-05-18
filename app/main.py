@@ -15,7 +15,7 @@ _log = logging.getLogger(__name__)
 from .external_models.gennis import GennisDividend, GennisInvestment
 from .external_models.turon import TuronDividend, TuronInvestment
 from .routers.v1 import auth
-from .routers.v1.accountant import overhead_types
+from .routers.v1.accountant import overhead_types, dashboard as accountant_dashboard
 from .routers.v1.management import (
     jobs, users, salary_months, salary_days,
     system_models, branches, tags, missions,
@@ -150,6 +150,7 @@ app.include_router(statistics.router, prefix=V1)
 app.include_router(gennis_detail.router, prefix=V1)
 app.include_router(turon_detail.router, prefix=V1)
 app.include_router(overhead_types.router, prefix=V1)
+app.include_router(accountant_dashboard.router, prefix=V1)
 app.include_router(dividends.router, prefix=V1)
 app.include_router(investments.router, prefix=V1)
 app.include_router(branch_loans.router, prefix=V1)

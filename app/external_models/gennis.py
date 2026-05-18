@@ -167,6 +167,7 @@ class StudentPayments(GennisBase):
     payment_sum = Column(Integer)
     payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"))
     location_id = Column(Integer, ForeignKey("locations.id"))
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"))
     calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
     payment = Column(Boolean)
@@ -211,6 +212,21 @@ class TeacherSalaries(GennisBase):
     salary_location_id = Column(Integer, ForeignKey("teachersalary.id"))
     teacher_id = Column(Integer, ForeignKey("teachers.id"))
     location_id = Column(Integer, ForeignKey("locations.id"))
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"))
+    calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
+    calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
+
+
+class AssistentSalaries(GennisBase):
+    """Individual assistent salary payment transactions."""
+    __tablename__ = "assistent_salaries"
+    id = Column(Integer, primary_key=True)
+    payment_sum = Column(Integer)
+    payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"))
+    salary_location_id = Column(Integer, ForeignKey("asistent_salary.id"))
+    assistent_id = Column(Integer, ForeignKey("assistent.id"))
+    location_id = Column(Integer, ForeignKey("locations.id"))
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"))
     calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
 
@@ -263,6 +279,7 @@ class StaffSalaries(GennisBase):
     salary_location_id = Column(Integer, ForeignKey("staffsalary.id"))
     staff_id = Column(Integer, ForeignKey("staff.id"))
     location_id = Column(Integer, ForeignKey("locations.id"))
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"))
     calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
 
