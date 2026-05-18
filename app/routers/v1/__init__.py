@@ -6,6 +6,7 @@ from .accountant import (
     payments as accountant_payments,
     overheads as accountant_overheads,
     salaries as accountant_salaries,
+    debts as accountant_debts,
 )
 
 from .management import (
