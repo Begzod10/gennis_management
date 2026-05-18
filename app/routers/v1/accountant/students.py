@@ -247,6 +247,7 @@ def _turon_students(
             agg.c.remaining_debt,
             agg.c.discount,
         )
+        .select_from(T.Student)
         .join(T.CustomUser, T.CustomUser.id == T.Student.user_id)
         .outerjoin(T.ClassNumber, T.ClassNumber.id == T.Student.class_number_id)
         .join(agg, agg.c.sid == T.Student.id)

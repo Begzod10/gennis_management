@@ -19,6 +19,9 @@ from .routers.v1.accountant import (
     overhead_types,
     dashboard as accountant_dashboard,
     students as accountant_students,
+    payments as accountant_payments,
+    overheads as accountant_overheads,
+    salaries as accountant_salaries,
 )
 from .routers.v1.management import (
     jobs, users, salary_months, salary_days,
@@ -156,6 +159,9 @@ app.include_router(turon_detail.router, prefix=V1)
 app.include_router(overhead_types.router, prefix=V1)
 app.include_router(accountant_dashboard.router, prefix=V1)
 app.include_router(accountant_students.router, prefix=V1)
+app.include_router(accountant_payments.router, prefix=V1)
+app.include_router(accountant_overheads.router, prefix=V1)
+app.include_router(accountant_salaries.router, prefix=V1)
 app.include_router(dividends.router, prefix=V1)
 app.include_router(investments.router, prefix=V1)
 app.include_router(branch_loans.router, prefix=V1)

@@ -3,6 +3,9 @@ from .accountant import (
     overhead_types,
     dashboard as accountant_dashboard,
     students as accountant_students,
+    payments as accountant_payments,
+    overheads as accountant_overheads,
+    salaries as accountant_salaries,
 )
 
 from .management import (

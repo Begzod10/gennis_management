@@ -431,6 +431,7 @@ class Overhead(GennisBase):
     overhead_type_id = Column(Integer, ForeignKey("overheadtype.id"), nullable=True)
     payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"))
     location_id = Column(Integer, ForeignKey("locations.id"))
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"), nullable=True)
     calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
 
