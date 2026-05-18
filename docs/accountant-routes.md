@@ -41,6 +41,7 @@ KPIs + trend + recent payments for one location/branch.
 | `location_id`| gennis   | —       | Gennis location id |
 | `branch_id`  | turon    | —       | Turon branch id |
 | `date`       | no       | today   | Override "today" for testing (`YYYY-MM-DD`) |
+| `from`,`to`  | no       | —       | When **both** are set, today-based KPIs aggregate over `[from, to]` instead. `today_payments.yesterday_value` becomes the equal-length window immediately before. `monthly_income` mirrors the range total. `range.mode` flips to `"custom"`. |
 
 ### Response
 
@@ -49,6 +50,7 @@ KPIs + trend + recent payments for one location/branch.
   "system": "gennis",
   "scope_id": 4,
   "today": "2026-05-18",
+  "range": { "from": "2026-05-18", "to": "2026-05-18", "mode": "today" },
 
   "today_payments": {
     "value": 12450000,
@@ -176,7 +178,7 @@ list.
 | `search`      | no       | —       | Filter list by student name/surname |
 | `channel`     | no       | —       | Filter list by raw payment type name (`cash` / `click` / `bank` / `payme` / …) |
 | `type`        | no       | —       | Filter list to `payment` or `discount` |
-| `from`,`to`   | no       | —       | Filter list by `YYYY-MM-DD` range |
+| `from`,`to`   | no       | —       | When **both** set, list **and** channel KPIs span `[from, to]` instead of the month; rows can cross month boundaries. `month_total` reflects the range. Trend stays 6-month rolling. |
 | `offset`,`limit` | no    | `0` / `50` | Max `limit` = 500 |
 
 ### Response
@@ -234,6 +236,7 @@ breakdown totals.
 | `location_id`      | gennis   | —       | |
 | `branch_id`        | turon    | —       | |
 | `month`,`year`     | no       | today   | |
+| `from`,`to`        | no       | —       | When **both** set, list + totals span `[from, to]` instead of the month. Chart stays 6-month rolling, anchored at `to`. |
 | `search`           | no       | —       | Matches `name` or `category` |
 | `overhead_type_id` | no       | —       | Filter by category (OverheadType id) |
 | `payment_type_id`  | no       | —       | Filter by To'lov usuli |
@@ -301,6 +304,7 @@ table.
 | `location_id` | gennis   | —       | |
 | `branch_id`   | turon    | —       | |
 | `month`,`year`| no       | today   | |
+| `from`,`to`   | no       | —       | When **both** set, the endpoint walks every month that overlaps `[from, to]` and merges the salary rows. KPIs aggregate across them. `month/year` in the response is the month of `to`. |
 | `search`      | no       | —       | Name/surname |
 | `role`        | no       | `all`   | `all` \| `teacher` \| `assistent` \| `staff` |
 | `status`      | no       | `all`   | `all` \| `pending` \| `partial` \| `paid` |

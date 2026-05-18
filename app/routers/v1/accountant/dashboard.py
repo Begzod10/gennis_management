@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, extract, func
 from sqlalchemy.orm import Session
 
@@ -73,10 +73,19 @@ class _RecentPayment(BaseModel):
     status: str  # "To'landi" | "Qisman"
 
 
+class _Range(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    mode: Literal["today", "custom"]
+
+
 class DashboardOut(BaseModel):
     system: Literal["gennis", "turon"]
     scope_id: int  # location_id for gennis, branch_id for turon
     today: str
+    range: _Range
     today_payments: _TodayKpi
     monthly_income: _MonthlyKpi
     debt: _DebtKpi
@@ -120,14 +129,17 @@ def _last_n_months(n: int, anchor: date) -> List[tuple[int, int]]:
 
 # ── Gennis aggregation ────────────────────────────────────────────────────────
 
-def _gennis_today_payments(db: Session, location_id: int, day: date) -> int:
-    """Sum of real student payments (payment=True) made on `day` at `location_id`."""
+def _gennis_payments_in_range(
+    db: Session, location_id: int, date_from: date, date_to: date,
+) -> int:
+    """Sum of real student payments (payment=True) within [date_from, date_to]."""
     return db.query(func.coalesce(func.sum(G.StudentPayments.payment_sum), 0)).join(
         G.CalendarDay, G.CalendarDay.id == G.StudentPayments.calendar_day,
     ).filter(
         G.StudentPayments.location_id == location_id,
         G.StudentPayments.payment == True,
-        func.date(G.CalendarDay.date) == day,
+        func.date(G.CalendarDay.date) >= date_from,
+        func.date(G.CalendarDay.date) <= date_to,
     ).scalar() or 0
 
 
@@ -163,14 +175,17 @@ def _gennis_debt(db: Session, location_id: int, year: int, month: int) -> tuple[
     return int(total or 0), int(cnt or 0)
 
 
-def _gennis_today_salary_expenses(db: Session, location_id: int, day: date) -> int:
-    """Sum of every salary transaction (teacher + assistent + staff) paid on `day`."""
+def _gennis_salary_expenses_in_range(
+    db: Session, location_id: int, date_from: date, date_to: date,
+) -> int:
+    """Sum of every salary transaction (teacher + assistent + staff) paid in [date_from, date_to]."""
     def _sum(model) -> int:
         return db.query(func.coalesce(func.sum(model.payment_sum), 0)).join(
             G.CalendarDay, G.CalendarDay.id == model.calendar_day,
         ).filter(
             model.location_id == location_id,
-            func.date(G.CalendarDay.date) == day,
+            func.date(G.CalendarDay.date) >= date_from,
+            func.date(G.CalendarDay.date) <= date_to,
         ).scalar() or 0
 
     return (
@@ -180,8 +195,10 @@ def _gennis_today_salary_expenses(db: Session, location_id: int, day: date) -> i
     )
 
 
-def _gennis_today_overhead_expenses(db: Session, location_id: int, day: date) -> int:
-    """Sum of overhead-type-log payments made on `day` at `location_id`.
+def _gennis_overhead_expenses_in_range(
+    db: Session, location_id: int, date_from: date, date_to: date,
+) -> int:
+    """Sum of overhead-type-log payments in [date_from, date_to] at `location_id`.
 
     Joins through the log to enforce the location filter — split payments
     inherit location from their parent log.
@@ -191,7 +208,8 @@ def _gennis_today_overhead_expenses(db: Session, location_id: int, day: date) ->
     ).filter(
         G.OverheadTypeLog.location_id == location_id,
         G.OverheadTypeLogPayment.deleted == False,
-        func.date(G.OverheadTypeLogPayment.paid_date) == day,
+        func.date(G.OverheadTypeLogPayment.paid_date) >= date_from,
+        func.date(G.OverheadTypeLogPayment.paid_date) <= date_to,
     ).scalar() or 0
 
 
@@ -243,12 +261,15 @@ def _gennis_recent_payments(db: Session, location_id: int, limit: int = 8) -> Li
 
 # ── Turon aggregation ─────────────────────────────────────────────────────────
 
-def _turon_today_payments(db: Session, branch_id: int, day: date) -> int:
+def _turon_payments_in_range(
+    db: Session, branch_id: int, date_from: date, date_to: date,
+) -> int:
     return db.query(func.coalesce(func.sum(T.StudentPayment.payment_sum), 0)).filter(
         T.StudentPayment.branch_id == branch_id,
         T.StudentPayment.status == True,
         T.StudentPayment.deleted == False,
-        T.StudentPayment.date == day,
+        T.StudentPayment.date >= date_from,
+        T.StudentPayment.date <= date_to,
     ).scalar() or 0
 
 
@@ -281,27 +302,34 @@ def _turon_debt(db: Session, branch_id: int, year: int, month: int) -> tuple[int
     return int(total or 0), int(cnt or 0)
 
 
-def _turon_today_salary_expenses(db: Session, branch_id: int, day: date) -> int:
+def _turon_salary_expenses_in_range(
+    db: Session, branch_id: int, date_from: date, date_to: date,
+) -> int:
     teacher = db.query(func.coalesce(func.sum(T.TeacherSalaryList.salary), 0)).filter(
         T.TeacherSalaryList.branch_id == branch_id,
         T.TeacherSalaryList.deleted == False,
-        T.TeacherSalaryList.date == day,
+        T.TeacherSalaryList.date >= date_from,
+        T.TeacherSalaryList.date <= date_to,
     ).scalar() or 0
 
     staff = db.query(func.coalesce(func.sum(T.UserSalaryList.salary), 0)).filter(
         T.UserSalaryList.branch_id == branch_id,
         T.UserSalaryList.deleted == False,
-        T.UserSalaryList.date == day,
+        T.UserSalaryList.date >= date_from,
+        T.UserSalaryList.date <= date_to,
     ).scalar() or 0
 
     return int(teacher) + int(staff)
 
 
-def _turon_today_overhead_expenses(db: Session, branch_id: int, day: date) -> int:
+def _turon_overhead_expenses_in_range(
+    db: Session, branch_id: int, date_from: date, date_to: date,
+) -> int:
     legacy = db.query(func.coalesce(func.sum(T.Overhead.price), 0)).filter(
         T.Overhead.branch_id == branch_id,
         T.Overhead.deleted == False,
-        T.Overhead.created == day,
+        T.Overhead.created >= date_from,
+        T.Overhead.created <= date_to,
     ).scalar() or 0
 
     split = db.query(func.coalesce(func.sum(T.OverheadTypeLogPayment.amount), 0)).join(
@@ -309,7 +337,8 @@ def _turon_today_overhead_expenses(db: Session, branch_id: int, day: date) -> in
     ).filter(
         T.OverheadTypeLog.branch_id == branch_id,
         T.OverheadTypeLogPayment.deleted == False,
-        func.date(T.OverheadTypeLogPayment.paid_date) == day,
+        func.date(T.OverheadTypeLogPayment.paid_date) >= date_from,
+        func.date(T.OverheadTypeLogPayment.paid_date) <= date_to,
     ).scalar() or 0
 
     return int(legacy) + int(split)
@@ -367,25 +396,44 @@ def accountant_dashboard(
     location_id: Optional[int] = Query(None, description="Gennis location id (required when system=gennis)"),
     branch_id: Optional[int] = Query(None, description="Turon branch id (required when system=turon)"),
     on_date: Optional[date] = Query(None, alias="date", description="Override 'today' for testing (YYYY-MM-DD)"),
+    date_from: Optional[date] = Query(None, alias="from", description="Start of custom range. When set with `to`, KPIs cover [from, to] instead of today."),
+    date_to: Optional[date] = Query(None, alias="to", description="End of custom range. When set with `from`, KPIs cover [from, to] instead of today."),
     gennis_db: Session = Depends(get_gennis_db),
     turon_db: Session = Depends(get_turon_db),
 ):
     today = on_date or date.today()
-    yesterday = today - timedelta(days=1)
-    month = today.month
-    year = today.year
-    months_window = _last_n_months(6, today)
+
+    # Resolve the active aggregation window. When both `from` and `to` are
+    # provided, treat that as the new "today" window — payments, expenses and
+    # monthly_income all aggregate over it; yesterday comparison becomes the
+    # equal-length window immediately before it.
+    custom = bool(date_from and date_to)
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="`from` must be on or before `to`")
+
+    range_from = date_from if custom else today
+    range_to = date_to if custom else today
+    window_days = (range_to - range_from).days + 1
+    prev_to = range_from - timedelta(days=1)
+    prev_from = prev_to - timedelta(days=window_days - 1)
+
+    # `monthly_income` and `debt` lock onto the last month in the active window.
+    anchor = range_to
+    month = anchor.month
+    year = anchor.year
+    months_window = _last_n_months(6, anchor)
 
     if system == "gennis":
         if not location_id:
             raise HTTPException(status_code=400, detail="location_id is required when system=gennis")
 
-        today_p = int(_gennis_today_payments(gennis_db, location_id, today))
-        yesterday_p = int(_gennis_today_payments(gennis_db, location_id, yesterday))
-        monthly = int(_gennis_monthly_income(gennis_db, location_id, year, month))
+        range_p = int(_gennis_payments_in_range(gennis_db, location_id, range_from, range_to))
+        prev_p = int(_gennis_payments_in_range(gennis_db, location_id, prev_from, prev_to))
+        monthly = (range_p if custom
+                   else int(_gennis_monthly_income(gennis_db, location_id, year, month)))
         debt_total, debt_count = _gennis_debt(gennis_db, location_id, year, month)
-        salaries_today = int(_gennis_today_salary_expenses(gennis_db, location_id, today))
-        overheads_today = int(_gennis_today_overhead_expenses(gennis_db, location_id, today))
+        salaries_range = int(_gennis_salary_expenses_in_range(gennis_db, location_id, range_from, range_to))
+        overheads_range = int(_gennis_overhead_expenses_in_range(gennis_db, location_id, range_from, range_to))
         trend = _gennis_income_trend(gennis_db, location_id, months_window)
         recent = _gennis_recent_payments(gennis_db, location_id)
         scope_id = location_id
@@ -393,12 +441,13 @@ def accountant_dashboard(
         if not branch_id:
             raise HTTPException(status_code=400, detail="branch_id is required when system=turon")
 
-        today_p = int(_turon_today_payments(turon_db, branch_id, today))
-        yesterday_p = int(_turon_today_payments(turon_db, branch_id, yesterday))
-        monthly = int(_turon_monthly_income(turon_db, branch_id, year, month))
+        range_p = int(_turon_payments_in_range(turon_db, branch_id, range_from, range_to))
+        prev_p = int(_turon_payments_in_range(turon_db, branch_id, prev_from, prev_to))
+        monthly = (range_p if custom
+                   else int(_turon_monthly_income(turon_db, branch_id, year, month)))
         debt_total, debt_count = _turon_debt(turon_db, branch_id, year, month)
-        salaries_today = int(_turon_today_salary_expenses(turon_db, branch_id, today))
-        overheads_today = int(_turon_today_overhead_expenses(turon_db, branch_id, today))
+        salaries_range = int(_turon_salary_expenses_in_range(turon_db, branch_id, range_from, range_to))
+        overheads_range = int(_turon_overhead_expenses_in_range(turon_db, branch_id, range_from, range_to))
         trend = _turon_income_trend(turon_db, branch_id, months_window)
         recent = _turon_recent_payments(turon_db, branch_id)
         scope_id = branch_id
@@ -407,10 +456,15 @@ def accountant_dashboard(
         system=system,
         scope_id=scope_id,
         today=today.strftime("%Y-%m-%d"),
+        range=_Range(
+            **{"from": range_from.strftime("%Y-%m-%d")},
+            to=range_to.strftime("%Y-%m-%d"),
+            mode="custom" if custom else "today",
+        ),
         today_payments=_TodayKpi(
-            value=today_p,
-            yesterday_value=yesterday_p,
-            delta_vs_yesterday_pct=_delta_pct(today_p, yesterday_p),
+            value=range_p,
+            yesterday_value=prev_p,
+            delta_vs_yesterday_pct=_delta_pct(range_p, prev_p),
         ),
         monthly_income=_MonthlyKpi(
             value=monthly,
@@ -420,9 +474,9 @@ def accountant_dashboard(
         ),
         debt=_DebtKpi(value=debt_total, open_count=debt_count),
         today_expenses=_ExpensesKpi(
-            value=salaries_today + overheads_today,
-            salaries=salaries_today,
-            overheads=overheads_today,
+            value=salaries_range + overheads_range,
+            salaries=salaries_range,
+            overheads=overheads_range,
         ),
         trend=trend,
         recent_payments=recent,

@@ -291,6 +291,20 @@ def _gennis_collect(
     return out
 
 
+def _gennis_collect_range(
+    db: Session,
+    location_id: int,
+    date_from: date,
+    date_to: date,
+    role: str,
+) -> List[SalaryRow]:
+    """Walk every (year, month) touched by [date_from, date_to] and merge results."""
+    out: list[SalaryRow] = []
+    for (y, m) in _months_in_range(date_from, date_to):
+        out += _gennis_collect(db, location_id, m, y, role)
+    return out
+
+
 # ── Turon ─────────────────────────────────────────────────────────────────────
 
 def _turon_teacher_rows(db: Session, branch_id: int, month: int, year: int) -> List[SalaryRow]:
@@ -386,6 +400,33 @@ def _turon_collect(
     return out
 
 
+def _turon_collect_range(
+    db: Session,
+    branch_id: int,
+    date_from: date,
+    date_to: date,
+    role: str,
+) -> List[SalaryRow]:
+    out: list[SalaryRow] = []
+    for (y, m) in _months_in_range(date_from, date_to):
+        out += _turon_collect(db, branch_id, m, y, role)
+    return out
+
+
+def _months_in_range(date_from: date, date_to: date) -> list[tuple[int, int]]:
+    """Inclusive list of (year, month) tuples covered by [date_from, date_to]."""
+    out: list[tuple[int, int]] = []
+    y, m = date_from.year, date_from.month
+    end_y, end_m = date_to.year, date_to.month
+    while (y, m) <= (end_y, end_m):
+        out.append((y, m))
+        m += 1
+        if m == 13:
+            m = 1
+            y += 1
+    return out
+
+
 # ── KPIs & filtering ──────────────────────────────────────────────────────────
 
 def _build_kpis(rows: List[SalaryRow]) -> _KpiCards:
@@ -426,6 +467,8 @@ def accountant_salaries(
     branch_id: Optional[int] = Query(None, description="Turon branch id (required when system=turon)"),
     month: Optional[int] = Query(None, ge=1, le=12, description="Defaults to current month"),
     year: Optional[int] = Query(None, ge=2000, description="Defaults to current year"),
+    date_from: Optional[date] = Query(None, alias="from", description="When set with `to`, collects every salary row whose month touches [from, to]."),
+    date_to: Optional[date] = Query(None, alias="to", description="When set with `from`, collects every salary row whose month touches [from, to]."),
     search: Optional[str] = Query(None, description="Match name or position"),
     role: Literal["all", "teacher", "assistent", "staff"] = Query("all"),
     status: Literal["all", "pending", "partial", "paid"] = Query("all"),
@@ -435,18 +478,28 @@ def accountant_salaries(
     turon_db: Session = Depends(get_turon_db),
 ):
     today = date.today()
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="`from` must be on or before `to`")
     m = month or today.month
     y = year or today.year
+    # When a range is provided, the reported month/year anchor is the last month in it.
+    if date_from and date_to:
+        m = date_to.month
+        y = date_to.year
 
     if system == "gennis":
         if not location_id:
             raise HTTPException(status_code=400, detail="location_id is required when system=gennis")
-        rows = _gennis_collect(gennis_db, location_id, m, y, role)
+        rows = (_gennis_collect_range(gennis_db, location_id, date_from, date_to, role)
+                if (date_from and date_to)
+                else _gennis_collect(gennis_db, location_id, m, y, role))
         scope_id = location_id
     else:
         if not branch_id:
             raise HTTPException(status_code=400, detail="branch_id is required when system=turon")
-        rows = _turon_collect(turon_db, branch_id, m, y, role)
+        rows = (_turon_collect_range(turon_db, branch_id, date_from, date_to, role)
+                if (date_from and date_to)
+                else _turon_collect(turon_db, branch_id, m, y, role))
         scope_id = branch_id
 
     rows = _filter_rows(rows, search, status)

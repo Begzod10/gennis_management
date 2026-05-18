@@ -212,12 +212,9 @@ def _gennis_overheads(
     search: Optional[str],
     overhead_type_id: Optional[int],
     payment_type_id: Optional[int],
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> List[OverheadRow]:
-    ids = _gennis_month_year_ids(db, month, year)
-    if not ids:
-        return []
-    month_id, year_id = ids
-
     q = (
         db.query(
             G.Overhead.id.label("id"),
@@ -235,12 +232,23 @@ def _gennis_overheads(
         .outerjoin(G.Locations, G.Locations.id == G.Overhead.location_id)
         .outerjoin(G.CalendarDay, G.CalendarDay.id == G.Overhead.calendar_day)
         .outerjoin(G.PaymentTypes, G.PaymentTypes.id == G.Overhead.payment_type_id)
-        .filter(
-            G.Overhead.location_id == location_id,
+        .filter(G.Overhead.location_id == location_id)
+    )
+
+    if date_from and date_to:
+        q = q.filter(
+            func.date(G.CalendarDay.date) >= date_from,
+            func.date(G.CalendarDay.date) <= date_to,
+        )
+    else:
+        ids = _gennis_month_year_ids(db, month, year)
+        if not ids:
+            return []
+        month_id, year_id = ids
+        q = q.filter(
             G.Overhead.calendar_month == month_id,
             G.Overhead.calendar_year == year_id,
         )
-    )
 
     if search:
         like = f"%{search}%"
@@ -324,6 +332,8 @@ def _turon_overheads(
     search: Optional[str],
     overhead_type_id: Optional[int],
     payment_type_id: Optional[int],
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> List[OverheadRow]:
     q = (
         db.query(
@@ -344,10 +354,19 @@ def _turon_overheads(
         .filter(
             T.Overhead.branch_id == branch_id,
             T.Overhead.deleted == False,
+        )
+    )
+
+    if date_from and date_to:
+        q = q.filter(
+            T.Overhead.created >= date_from,
+            T.Overhead.created <= date_to,
+        )
+    else:
+        q = q.filter(
             extract("month", T.Overhead.created) == month,
             extract("year", T.Overhead.created) == year,
         )
-    )
 
     if search:
         like = f"%{search}%"
@@ -388,6 +407,8 @@ def accountant_overheads(
     branch_id: Optional[int] = Query(None, description="Turon branch id (required when system=turon)"),
     month: Optional[int] = Query(None, ge=1, le=12, description="Defaults to current month"),
     year: Optional[int] = Query(None, ge=2000, description="Defaults to current year"),
+    date_from: Optional[date] = Query(None, alias="from", description="When set with `to`, overrides month/year for the list and totals."),
+    date_to: Optional[date] = Query(None, alias="to", description="When set with `from`, overrides month/year for the list and totals."),
     search: Optional[str] = Query(None, description="Filter by name or category"),
     overhead_type_id: Optional[int] = Query(None, description="Filter by OverheadType id"),
     payment_type_id: Optional[int] = Query(None, description="Filter by PaymentType id"),
@@ -397,20 +418,24 @@ def accountant_overheads(
     turon_db: Session = Depends(get_turon_db),
 ):
     today = date.today()
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="`from` must be on or before `to`")
     month = month or today.month
     year = year or today.year
-    months_window = _last_n_months(6, date(year, month, 1))
+    # Chart anchor follows the active selection: end of explicit range, or month/year
+    anchor = date_to if (date_from and date_to) else date(year, month, 1)
+    months_window = _last_n_months(6, anchor)
 
     if system == "gennis":
         if not location_id:
             raise HTTPException(status_code=400, detail="location_id is required when system=gennis")
-        all_rows = _gennis_overheads(gennis_db, location_id, month, year, search, overhead_type_id, payment_type_id)
+        all_rows = _gennis_overheads(gennis_db, location_id, month, year, search, overhead_type_id, payment_type_id, date_from, date_to)
         chart = _gennis_trend(gennis_db, location_id, months_window)
         scope_id = location_id
     else:
         if not branch_id:
             raise HTTPException(status_code=400, detail="branch_id is required when system=turon")
-        all_rows = _turon_overheads(turon_db, branch_id, month, year, search, overhead_type_id, payment_type_id)
+        all_rows = _turon_overheads(turon_db, branch_id, month, year, search, overhead_type_id, payment_type_id, date_from, date_to)
         chart = _turon_trend(turon_db, branch_id, months_window)
         scope_id = branch_id
 

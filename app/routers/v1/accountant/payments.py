@@ -141,25 +141,36 @@ def _gennis_month_year_ids(db: Session, month: int, year: int) -> Optional[tuple
     return month_row.id, year_row.id
 
 
-def _gennis_channel_totals(db: Session, location_id: int, month: int, year: int) -> List[_ChannelTotal]:
-    ids = _gennis_month_year_ids(db, month, year)
-    rows: list[tuple[str, int]] = []
-    if ids:
-        month_id, year_id = ids
-        raw = (
-            db.query(G.PaymentTypes.name, func.coalesce(func.sum(G.StudentPayments.payment_sum), 0))
-            .join(G.StudentPayments, G.StudentPayments.payment_type_id == G.PaymentTypes.id)
-            .filter(
-                G.StudentPayments.location_id == location_id,
-                G.StudentPayments.payment == True,
-                G.StudentPayments.calendar_month == month_id,
-                G.StudentPayments.calendar_year == year_id,
-            )
-            .group_by(G.PaymentTypes.name)
-            .all()
+def _gennis_channel_totals(
+    db: Session, location_id: int, month: int, year: int,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+) -> List[_ChannelTotal]:
+    q = (
+        db.query(G.PaymentTypes.name, func.coalesce(func.sum(G.StudentPayments.payment_sum), 0))
+        .join(G.StudentPayments, G.StudentPayments.payment_type_id == G.PaymentTypes.id)
+        .filter(
+            G.StudentPayments.location_id == location_id,
+            G.StudentPayments.payment == True,
         )
-        rows = [(n or "", int(v or 0)) for n, v in raw]
+        .group_by(G.PaymentTypes.name)
+    )
 
+    if date_from and date_to:
+        q = q.join(G.CalendarDay, G.CalendarDay.id == G.StudentPayments.calendar_day).filter(
+            func.date(G.CalendarDay.date) >= date_from,
+            func.date(G.CalendarDay.date) <= date_to,
+        )
+    else:
+        ids = _gennis_month_year_ids(db, month, year)
+        if not ids:
+            return []
+        month_id, year_id = ids
+        q = q.filter(
+            G.StudentPayments.calendar_month == month_id,
+            G.StudentPayments.calendar_year == year_id,
+        )
+
+    rows = [(n or "", int(v or 0)) for n, v in q.all()]
     values = [v for _, v in rows]
     percents = _percentages(values)
     return [
@@ -233,11 +244,6 @@ def _gennis_payments_list(
     offset: int,
     limit: int,
 ) -> tuple[int, list[_PaymentItem]]:
-    ids = _gennis_month_year_ids(db, month, year)
-    if not ids:
-        return 0, []
-    month_id, year_id = ids
-
     base = (
         db.query(
             G.StudentPayments,
@@ -250,12 +256,18 @@ def _gennis_payments_list(
         .join(G.Users, G.Users.id == G.Students.user_id)
         .outerjoin(G.PaymentTypes, G.PaymentTypes.id == G.StudentPayments.payment_type_id)
         .outerjoin(G.CalendarDay, G.CalendarDay.id == G.StudentPayments.calendar_day)
-        .filter(
-            G.StudentPayments.location_id == location_id,
+        .filter(G.StudentPayments.location_id == location_id)
+    )
+
+    if not (date_from and date_to):
+        ids = _gennis_month_year_ids(db, month, year)
+        if not ids:
+            return 0, []
+        month_id, year_id = ids
+        base = base.filter(
             G.StudentPayments.calendar_month == month_id,
             G.StudentPayments.calendar_year == year_id,
         )
-    )
 
     if search:
         like = f"%{search}%"
@@ -302,20 +314,31 @@ def _gennis_payments_list(
 
 # ── Turon aggregation ─────────────────────────────────────────────────────────
 
-def _turon_channel_totals(db: Session, branch_id: int, month: int, year: int) -> List[_ChannelTotal]:
-    raw = (
+def _turon_channel_totals(
+    db: Session, branch_id: int, month: int, year: int,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+) -> List[_ChannelTotal]:
+    q = (
         db.query(T.PaymentTypes.name, func.coalesce(func.sum(T.StudentPayment.payment_sum), 0))
         .join(T.StudentPayment, T.StudentPayment.payment_type_id == T.PaymentTypes.id)
         .filter(
             T.StudentPayment.branch_id == branch_id,
             T.StudentPayment.deleted == False,
             T.StudentPayment.status == False,  # real payments, not discounts
+        )
+        .group_by(T.PaymentTypes.name)
+    )
+    if date_from and date_to:
+        q = q.filter(
+            T.StudentPayment.date >= date_from,
+            T.StudentPayment.date <= date_to,
+        )
+    else:
+        q = q.filter(
             extract("month", T.StudentPayment.date) == month,
             extract("year", T.StudentPayment.date) == year,
         )
-        .group_by(T.PaymentTypes.name)
-        .all()
-    )
+    raw = q.all()
     rows = [(n or "", int(v or 0)) for n, v in raw]
     values = [v for _, v in rows]
     percents = _percentages(values)
@@ -406,10 +429,14 @@ def _turon_payments_list(
         .filter(
             T.StudentPayment.branch_id == branch_id,
             T.StudentPayment.deleted == False,
+        )
+    )
+
+    if not (date_from and date_to):
+        base = base.filter(
             extract("month", T.StudentPayment.date) == month,
             extract("year", T.StudentPayment.date) == year,
         )
-    )
 
     if search:
         like = f"%{search}%"
@@ -474,6 +501,8 @@ def accountant_payments(
     turon_db: Session = Depends(get_turon_db),
 ):
     today = date.today()
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="`from` must be on or before `to`")
     month_v = month or today.month
     year_v = year or today.year
     months_window = _last_n_months(6, date(year_v, month_v, 1))
@@ -481,7 +510,7 @@ def accountant_payments(
     if system == "gennis":
         if not location_id:
             raise HTTPException(status_code=400, detail="location_id is required when system=gennis")
-        channel_totals = _gennis_channel_totals(gennis_db, location_id, month_v, year_v)
+        channel_totals = _gennis_channel_totals(gennis_db, location_id, month_v, year_v, date_from, date_to)
         trend = _gennis_trend(gennis_db, location_id, months_window)
         total, items = _gennis_payments_list(
             gennis_db, location_id, month_v, year_v,
@@ -492,7 +521,7 @@ def accountant_payments(
     else:
         if not branch_id:
             raise HTTPException(status_code=400, detail="branch_id is required when system=turon")
-        channel_totals = _turon_channel_totals(turon_db, branch_id, month_v, year_v)
+        channel_totals = _turon_channel_totals(turon_db, branch_id, month_v, year_v, date_from, date_to)
         trend = _turon_trend(turon_db, branch_id, months_window)
         total, items = _turon_payments_list(
             turon_db, branch_id, month_v, year_v,
