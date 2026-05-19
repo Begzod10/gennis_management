@@ -1,7 +1,7 @@
 """subtask lifecycle columns + sub-record tables (comments, attachments, proofs)
 
 Revision ID: b7e9c2d1a4f5
-Revises: 2daf4819a4de
+Revises: 0bb67d2bc035
 Create Date: 2026-05-19 16:10:00.000000
 
 Adds mission-like lifecycle columns to mission_subtask (creator_id,
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'b7e9c2d1a4f5'
-down_revision: Union[str, Sequence[str], None] = '2daf4819a4de'
+down_revision: Union[str, Sequence[str], None] = '0bb67d2bc035'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
