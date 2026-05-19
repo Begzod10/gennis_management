@@ -642,8 +642,47 @@ class TuronMissionSubtask(TuronBase):
     management_id = Column(BigInteger, nullable=True, unique=True)
     mission_id = Column(BigInteger, ForeignKey("tasks_mission.id"))
     title = Column(String(255))
+    description = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False)
     order = Column(Integer, default=0)
+    status = Column(String(30), nullable=True)
+    deadline = Column(Date, nullable=True)
+    finish_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    creator_name = Column(String(255), nullable=True)
+
+
+class TuronMissionSubtaskComment(TuronBase):
+    __tablename__ = "tasks_missionsubtaskcomment"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    subtask_id = Column(BigInteger, ForeignKey("tasks_missionsubtask.id"))
+    user_id = Column(BigInteger, ForeignKey("user_customuser.id"), nullable=True)
+    text = Column(Text)
+    attachment = Column(String(500), nullable=True)
+    created_at = Column(DateTime)
+    creator_name = Column(String(255), nullable=True)
+
+
+class TuronMissionSubtaskAttachment(TuronBase):
+    __tablename__ = "tasks_missionsubtaskattachment"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    subtask_id = Column(BigInteger, ForeignKey("tasks_missionsubtask.id"))
+    file = Column(String(500))
+    note = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime)
+    creator_name = Column(String(255), nullable=True)
+
+
+class TuronMissionSubtaskProof(TuronBase):
+    __tablename__ = "tasks_missionsubtaskproof"
+    id = Column(BigInteger, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    subtask_id = Column(BigInteger, ForeignKey("tasks_missionsubtask.id"))
+    file = Column(String(500))
+    comment = Column(String(255), nullable=True)
+    created_at = Column(DateTime)
     creator_name = Column(String(255), nullable=True)
 
 

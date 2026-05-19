@@ -17,6 +17,7 @@ from .management import (
     branches, combined, dividends, investments, jobs,
     missions, mission_attachments, mission_comments,
     mission_proofs, mission_subtasks,
+    mission_subtask_comments, mission_subtask_attachments, mission_subtask_proofs,
     notifications, projects,
     salary_days, salary_months, sections,
     statistics, system_models, tags, users,

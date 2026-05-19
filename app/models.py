@@ -260,14 +260,75 @@ class MissionSubtask(Base):
 
     id = Column(BigInteger, primary_key=True, index=True)
     mission_id = Column(BigInteger, ForeignKey("mission.id"), nullable=False)
+    creator_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
     executor_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    reviewer_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+
     title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False)
     order = Column(Integer, default=0)
+    status = Column(String(30), default="not_started")
+
+    start_date = Column(Date, server_default=func.current_date(), nullable=True)
+    deadline = Column(Date, nullable=True)
+    finish_date = Column(Date, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     deleted = Column(Boolean, nullable=False, default=False)
 
     mission = relationship("Mission", back_populates="subtasks")
+    creator = relationship("User", foreign_keys=[creator_id])
     executor = relationship("User", foreign_keys=[executor_id])
+    reviewer = relationship("User", foreign_keys=[reviewer_id])
+    comments = relationship("MissionSubtaskComment", back_populates="subtask", cascade="all, delete-orphan")
+    attachments = relationship("MissionSubtaskAttachment", back_populates="subtask", cascade="all, delete-orphan")
+    proofs = relationship("MissionSubtaskProof", back_populates="subtask", cascade="all, delete-orphan")
+
+
+class MissionSubtaskComment(Base):
+    __tablename__ = "mission_subtask_comment"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    subtask_id = Column(BigInteger, ForeignKey("mission_subtask.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
+    text = Column(Text, nullable=False)
+    attachment = Column(String(500), nullable=True)
+    creator_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    deleted = Column(Boolean, nullable=False, default=False)
+
+    subtask = relationship("MissionSubtask", back_populates="comments")
+    user = relationship("User")
+
+
+class MissionSubtaskAttachment(Base):
+    __tablename__ = "mission_subtask_attachment"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    subtask_id = Column(BigInteger, ForeignKey("mission_subtask.id"), nullable=False)
+    file = Column(String(500), nullable=False)
+    uploaded_at = Column(DateTime, server_default=func.now())
+    note = Column(String(255), nullable=True)
+    creator_name = Column(String(255), nullable=True)
+    deleted = Column(Boolean, nullable=False, default=False)
+
+    subtask = relationship("MissionSubtask", back_populates="attachments")
+
+
+class MissionSubtaskProof(Base):
+    __tablename__ = "mission_subtask_proof"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    subtask_id = Column(BigInteger, ForeignKey("mission_subtask.id"), nullable=False)
+    file = Column(String(500), nullable=False)
+    comment = Column(String(255), nullable=True)
+    creator_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    deleted = Column(Boolean, nullable=False, default=False)
+
+    subtask = relationship("MissionSubtask", back_populates="proofs")
 
 
 class MissionAttachment(Base):

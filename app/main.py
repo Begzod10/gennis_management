@@ -28,6 +28,7 @@ from .routers.v1.management import (
     jobs, users, salary_months, salary_days,
     system_models, branches, tags, missions,
     mission_subtasks, mission_attachments, mission_comments, mission_proofs,
+    mission_subtask_comments, mission_subtask_attachments, mission_subtask_proofs,
     notifications, statistics, dividends, investments,
     projects, sections, combined, telegram_bot, branch_loans,
     admin_requests, branch_transactions, overhead_type_logs,
@@ -150,6 +151,9 @@ app.include_router(branches.router, prefix=V1)
 app.include_router(tags.router, prefix=V1)
 app.include_router(missions.router, prefix=V1)
 app.include_router(mission_subtasks.router, prefix=V1)
+app.include_router(mission_subtask_comments.router, prefix=V1)
+app.include_router(mission_subtask_attachments.router, prefix=V1)
+app.include_router(mission_subtask_proofs.router, prefix=V1)
 app.include_router(mission_attachments.router, prefix=V1)
 app.include_router(mission_comments.router, prefix=V1)
 app.include_router(mission_proofs.router, prefix=V1)

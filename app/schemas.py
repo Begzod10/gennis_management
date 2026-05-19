@@ -415,25 +415,100 @@ class MissionOut(BaseModel):
 # --- MissionSubtask ---
 class MissionSubtaskCreate(BaseModel):
     title: str
+    description: Optional[str] = None
     order: int = 0
+    status: Optional[str] = "not_started"
+    creator_id: Optional[int] = None
     executor_id: Optional[int] = None
+    reviewer_id: Optional[int] = None
+    deadline: Optional[date] = None
 
 
 class MissionSubtaskUpdate(BaseModel):
     title: Optional[str] = None
+    description: Optional[str] = None
     is_done: Optional[bool] = None
     order: Optional[int] = None
+    status: Optional[str] = None
+    creator_id: Optional[int] = None
     executor_id: Optional[int] = None
+    reviewer_id: Optional[int] = None
+    deadline: Optional[date] = None
+    finish_date: Optional[date] = None
 
 
 class MissionSubtaskOut(BaseModel):
     id: int
     mission_id: int
+    creator_id: Optional[int] = None
     executor_id: Optional[int] = None
+    reviewer_id: Optional[int] = None
+    creator: Optional[UserOut] = None
     executor: Optional[UserOut] = None
+    reviewer: Optional[UserOut] = None
     title: str
+    description: Optional[str] = None
     is_done: bool
     order: int
+    status: Optional[str] = None
+    start_date: Optional[date] = None
+    deadline: Optional[date] = None
+    finish_date: Optional[date] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# --- MissionSubtaskComment ---
+class MissionSubtaskCommentUpdate(BaseModel):
+    text: Optional[str] = None
+    attachment: Optional[str] = None
+
+
+class MissionSubtaskCommentOut(BaseModel):
+    id: int
+    subtask_id: int
+    user_id: Optional[int] = None
+    user: Optional["UserOut"] = None
+    creator_name: Optional[str] = None
+    text: str
+    attachment: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# --- MissionSubtaskAttachment ---
+class MissionSubtaskAttachmentUpdate(BaseModel):
+    note: Optional[str] = None
+    file: Optional[str] = None
+
+
+class MissionSubtaskAttachmentOut(BaseModel):
+    id: int
+    subtask_id: int
+    file: str
+    uploaded_at: datetime
+    note: Optional[str] = None
+    creator_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+# --- MissionSubtaskProof ---
+class MissionSubtaskProofUpdate(BaseModel):
+    comment: Optional[str] = None
+    file: Optional[str] = None
+
+
+class MissionSubtaskProofOut(BaseModel):
+    id: int
+    subtask_id: int
+    file: str
+    comment: Optional[str] = None
+    creator_name: Optional[str] = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 

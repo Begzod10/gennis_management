@@ -33,15 +33,24 @@ def _sync_subtask_gennis(mission: Mission, subtask: MissionSubtask, gennis_db: S
         return
     if ext:
         ext.title = subtask.title
+        ext.description = subtask.description
         ext.is_done = subtask.is_done
         ext.order = subtask.order
+        ext.status = subtask.status
+        ext.deadline = subtask.deadline
+        ext.finish_date = subtask.finish_date
     else:
         ext = GennisMissionSubtask(
             management_id=subtask.id,
             mission_id=ext_mission.id,
             title=subtask.title,
+            description=subtask.description,
             is_done=subtask.is_done,
             order=subtask.order,
+            status=subtask.status,
+            deadline=subtask.deadline,
+            finish_date=subtask.finish_date,
+            created_at=subtask.created_at,
             creator_name=creator_name,
         )
         gennis_db.add(ext)
@@ -62,15 +71,24 @@ def _sync_subtask_turon(mission: Mission, subtask: MissionSubtask, turon_db: Ses
         return
     if ext:
         ext.title = subtask.title
+        ext.description = subtask.description
         ext.is_done = subtask.is_done
         ext.order = subtask.order
+        ext.status = subtask.status
+        ext.deadline = subtask.deadline
+        ext.finish_date = subtask.finish_date
     else:
         ext = TuronMissionSubtask(
             management_id=subtask.id,
             mission_id=ext_mission.id,
             title=subtask.title,
+            description=subtask.description,
             is_done=subtask.is_done,
             order=subtask.order,
+            status=subtask.status,
+            deadline=subtask.deadline,
+            finish_date=subtask.finish_date,
+            created_at=subtask.created_at,
             creator_name=creator_name,
         )
         turon_db.add(ext)
@@ -87,7 +105,9 @@ def create_subtask(
     turon_db: Session = Depends(get_turon_write_db),
 ):
     mission = _get_mission(db, mission_id)
-    subtask = MissionSubtask(**data.model_dump(), mission_id=mission_id)
+    payload = data.model_dump()
+    payload.setdefault("creator_id", creator_id)
+    subtask = MissionSubtask(**payload, mission_id=mission_id)
     db.add(subtask)
     db.commit()
     db.refresh(subtask)

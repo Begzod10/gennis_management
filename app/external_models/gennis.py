@@ -350,8 +350,47 @@ class GennisMissionSubtask(GennisBase):
     management_id = Column(BigInteger, nullable=True, unique=True)
     mission_id = Column(Integer, ForeignKey("missions.id"))
     title = Column(String(255))
+    description = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False)
     order = Column(Integer, default=0)
+    status = Column(String(30), nullable=True)
+    deadline = Column(Date, nullable=True)
+    finish_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    creator_name = Column(String(255), nullable=True)
+
+
+class GennisMissionSubtaskComment(GennisBase):
+    __tablename__ = "mission_subtask_comments"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    subtask_id = Column(Integer, ForeignKey("mission_subtasks.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    text = Column(Text)
+    attachment_path = Column(String(500), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    creator_name = Column(String(255), nullable=True)
+
+
+class GennisMissionSubtaskAttachment(GennisBase):
+    __tablename__ = "mission_subtask_attachments"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    subtask_id = Column(Integer, ForeignKey("mission_subtasks.id"))
+    file_path = Column(String(500))
+    note = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime, nullable=True)
+    creator_name = Column(String(255), nullable=True)
+
+
+class GennisMissionSubtaskProof(GennisBase):
+    __tablename__ = "mission_subtask_proofs"
+    id = Column(Integer, primary_key=True)
+    management_id = Column(BigInteger, nullable=True, unique=True)
+    subtask_id = Column(Integer, ForeignKey("mission_subtasks.id"))
+    file_path = Column(String(500))
+    comment = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=True)
     creator_name = Column(String(255), nullable=True)
 
 
