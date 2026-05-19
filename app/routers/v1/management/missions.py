@@ -4,7 +4,7 @@ from sqlalchemy import or_, func
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
-from app.models import Mission, MissionHistory, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job
+from app.models import Mission, MissionHistory, MissionSubtask, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job
 from app.services.openai_assistant import (
     ExecutorCandidate,
     MissionContext,
@@ -15,8 +15,8 @@ from app.schemas import (
     MissionCreate, MissionBulkCreate, MissionUpdate, MissionOut, MissionStatusEnum,
     MissionApprove, MissionHistoryOut, UserOut,
 )
-from app.external_models.gennis import GennisMission, GennisMissionHistory, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
-from app.external_models.turon import TuronMission, TuronMissionHistory, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
+from app.external_models.gennis import GennisMission, GennisMissionHistory, GennisMissionSubtask, Users as GennisUsers, Staff as GennisStaff, GennisProfessions, Locations as GennisLocations
+from app.external_models.turon import TuronMission, TuronMissionHistory, TuronMissionSubtask, CustomUser as TuronUser, AuthGroup, CustomAutoGroup, ManyBranch
 from pydantic import BaseModel
 from app.tasks import send_telegram_notification
 from app.services.telegram import (
@@ -1497,9 +1497,42 @@ def external_mission_stats(
     if branch_id:
         tq = tq.filter(TuronMission.branch_id == branch_id)
 
+    # ── Subtask counts (joined to parent mission for scope filtering) ──
+    g_sub_q = (
+        gennis_db.query(GennisMissionSubtask)
+        .join(GennisMission, GennisMission.id == GennisMissionSubtask.mission_id)
+    )
+    if location_id:
+        g_sub_q = g_sub_q.filter(GennisMission.location_id == location_id)
+
+    t_sub_q = (
+        turon_db.query(TuronMissionSubtask)
+        .join(TuronMission, TuronMission.id == TuronMissionSubtask.mission_id)
+    )
+    if branch_id:
+        t_sub_q = t_sub_q.filter(TuronMission.branch_id == branch_id)
+
+    def subtasks_summary(q, model) -> dict:
+        total = q.count()
+        done = q.filter(model.is_done == True).count()
+        return {
+            "total": total,
+            "done": done,
+            "pending": total - done,
+            "by_status": by_status(q, model),
+        }
+
     return {
-        "gennis": {"total": gq.count(), "by_status": by_status(gq, GennisMission)},
-        "turon": {"total": tq.count(), "by_status": by_status(tq, TuronMission)},
+        "gennis": {
+            "total": gq.count(),
+            "by_status": by_status(gq, GennisMission),
+            "subtasks": subtasks_summary(g_sub_q, GennisMissionSubtask),
+        },
+        "turon": {
+            "total": tq.count(),
+            "by_status": by_status(tq, TuronMission),
+            "subtasks": subtasks_summary(t_sub_q, TuronMissionSubtask),
+        },
     }
 
 
@@ -1663,6 +1696,56 @@ def user_mission_performance(
     for m in missions:
         by_user.setdefault(m.executor_id, []).append(m)
 
+    # ── Subtask metrics, scoped to the same deadline window ──
+    sub_q = db.query(MissionSubtask).filter(
+        MissionSubtask.deleted == False,
+        MissionSubtask.executor_id.isnot(None),
+        # Subtasks without a deadline are bucketed into their parent mission's
+        # window only if the parent deadline matches; we accept either side
+        # to avoid double-filtering rows the user can already see.
+        or_(
+            MissionSubtask.deadline.between(from_date, to_date),
+            MissionSubtask.deadline.is_(None),
+        ),
+    )
+    if user_id is not None:
+        sub_q = sub_q.filter(MissionSubtask.executor_id == user_id)
+    subtasks = sub_q.all()
+
+    subtasks_by_user: dict[int, list[MissionSubtask]] = {}
+    for s in subtasks:
+        subtasks_by_user.setdefault(s.executor_id, []).append(s)
+
+    def build_subtask_stats(rows: List[MissionSubtask]) -> dict:
+        total = len(rows)
+        done_rows = [s for s in rows if s.is_done or s.status in ("completed", "approved")]
+        approved_rows = [s for s in rows if s.status == "approved"]
+        done = len(done_rows)
+        approved = len(approved_rows)
+        pending = total - done
+
+        on_time = late = 0
+        for s in done_rows:
+            if s.finish_date is None or s.deadline is None:
+                continue
+            if s.finish_date <= s.deadline:
+                on_time += 1
+            else:
+                late += 1
+
+        return {
+            "total": total,
+            "done": done,
+            "pending": pending,
+            "approved": approved,
+            "done_percentage": pct(done, total),
+            "pending_percentage": pct(pending, total),
+            "on_time": on_time,
+            "late": late,
+            "on_time_percentage_of_done": pct(on_time, done),
+            "late_percentage_of_done": pct(late, done),
+        }
+
     users_payload = []
     for uid, rows in by_user.items():
         executor = rows[0].executor
@@ -1672,6 +1755,7 @@ def user_mission_performance(
             "surname": executor.surname if executor else None,
             "role": executor.role if executor else None,
             **build_stats(rows),
+            "subtasks": build_subtask_stats(subtasks_by_user.get(uid, [])),
         })
     users_payload.sort(key=lambda u: (-u["total"], (u["name"] or "").lower()))
 
@@ -1680,7 +1764,10 @@ def user_mission_performance(
         "to_date": to_date,
         "user_id": user_id,
         "users": users_payload,
-        "overall": build_stats(missions),
+        "overall": {
+            **build_stats(missions),
+            "subtasks": build_subtask_stats(subtasks),
+        },
     }
 
 
@@ -1735,6 +1822,11 @@ def manager_mission_stats(
         Mission.created_at >= range_start,
         Mission.created_at < range_end,
     ]
+    subtask_base_filters = [
+        MissionSubtask.deleted == False,
+        MissionSubtask.created_at >= range_start,
+        MissionSubtask.created_at < range_end,
+    ]
 
     raw = []
     for m in managers:
@@ -1759,6 +1851,27 @@ def manager_mission_stats(
             Mission.approval_status == "declined",
         ).count()
 
+        sub_created = db.query(MissionSubtask).filter(
+            *subtask_base_filters,
+            MissionSubtask.creator_id == m.id,
+        ).count()
+        sub_reviewed = db.query(MissionSubtask).filter(
+            *subtask_base_filters,
+            MissionSubtask.reviewer_id == m.id,
+        ).count()
+        sub_received = db.query(MissionSubtask).filter(
+            *subtask_base_filters,
+            MissionSubtask.executor_id == m.id,
+        ).count()
+        sub_done = db.query(MissionSubtask).filter(
+            *subtask_base_filters,
+            MissionSubtask.executor_id == m.id,
+            or_(
+                MissionSubtask.is_done == True,
+                MissionSubtask.status.in_(("completed", "approved")),
+            ),
+        ).count()
+
         manager_type = []
         if m.id in project_manager_ids:
             manager_type.append("project_manager")
@@ -1774,6 +1887,10 @@ def manager_mission_stats(
             "reviewed": reviewed,
             "received": received,
             "rejected": rejected,
+            "subtasks_created": sub_created,
+            "subtasks_reviewed": sub_reviewed,
+            "subtasks_received": sub_received,
+            "subtasks_done": sub_done,
         })
 
     totals = {
@@ -1781,6 +1898,10 @@ def manager_mission_stats(
         "reviewed": sum(r["reviewed"] for r in raw),
         "received": sum(r["received"] for r in raw),
         "rejected": sum(r["rejected"] for r in raw),
+        "subtasks_created": sum(r["subtasks_created"] for r in raw),
+        "subtasks_reviewed": sum(r["subtasks_reviewed"] for r in raw),
+        "subtasks_received": sum(r["subtasks_received"] for r in raw),
+        "subtasks_done": sum(r["subtasks_done"] for r in raw),
     }
 
     def pct(numerator: int, denominator: int) -> float:
@@ -1795,9 +1916,18 @@ def manager_mission_stats(
             "received_share_pct": pct(r["received"], totals["received"]),
             "rejected_share_pct": pct(r["rejected"], totals["rejected"]),
             "rejection_rate_pct": pct(r["rejected"], r["reviewed"]),
+            "subtasks_created_share_pct": pct(r["subtasks_created"], totals["subtasks_created"]),
+            "subtasks_received_share_pct": pct(r["subtasks_received"], totals["subtasks_received"]),
+            "subtasks_done_rate_pct": pct(r["subtasks_done"], r["subtasks_received"]),
         })
 
-    results.sort(key=lambda r: (r["created"] + r["reviewed"] + r["received"]), reverse=True)
+    results.sort(
+        key=lambda r: (
+            r["created"] + r["reviewed"] + r["received"]
+            + r["subtasks_created"] + r["subtasks_received"]
+        ),
+        reverse=True,
+    )
 
     return {
         "from_date": from_date,

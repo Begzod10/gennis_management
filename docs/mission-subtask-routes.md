@@ -364,3 +364,126 @@ async function addProof(missionId: number, subtaskId: number, creatorId: number,
 | `404`     | Mission, subtask, or sub-record not found (or already soft-deleted) |
 | `422`     | Validation failure (missing form field, wrong content-type) |
 | `500`     | Server error — check FastAPI logs        |
+
+---
+
+## Statistics — new subtask fields
+
+The three existing mission-statistics endpoints now return parallel
+subtask metrics. Mission-level fields are unchanged; the additions are
+described below.
+
+### `GET /api/v1/missions/external/stats`
+
+Adds a `subtasks` block to each system. Same `location_id` / `branch_id`
+filter is applied via the parent mission join (so subtasks under a
+filtered-out mission are excluded).
+
+```jsonc
+{
+  "gennis": {
+    "total": 142,
+    "by_status": { /* unchanged */ },
+    "subtasks": {
+      "total": 380,
+      "done": 215,
+      "pending": 165,
+      "by_status": {
+        "not_started": 90,
+        "in_progress": 65,
+        "blocked": 10,
+        "completed": 180,
+        "approved": 35,
+        "declined": 0,
+        "recheck": 0
+      }
+    }
+  },
+  "turon": { "...": "same shape" }
+}
+```
+
+### `GET /api/v1/missions/stats/user-performance`
+
+Each per-user object gains a `subtasks` block, and `overall` does too.
+Subtasks are scoped to the same `from_date` / `to_date` deadline window
+as missions. Subtasks without a deadline are included to avoid hiding
+parent-aligned work.
+
+```jsonc
+{
+  "users": [
+    {
+      "user_id": 3,
+      "name": "Aziza", "surname": "K.", "role": "team_lead",
+      "total": 12, "finished": 9, "approved": 7, "...": "...",
+      "subtasks": {
+        "total": 24,
+        "done": 18,
+        "pending": 6,
+        "approved": 14,
+        "done_percentage": 75.0,
+        "pending_percentage": 25.0,
+        "on_time": 15,
+        "late": 3,
+        "on_time_percentage_of_done": 83.33,
+        "late_percentage_of_done": 16.67
+      }
+    }
+  ],
+  "overall": {
+    "total": 50, "finished": 32, "...": "...",
+    "subtasks": { "...": "same shape, aggregated" }
+  }
+}
+```
+
+- `done` = `is_done == true` OR `status in (completed, approved)`
+- `approved` = `status == "approved"`
+- `on_time` / `late` require both `finish_date` and `deadline` to be set;
+  rows missing either are dropped from the on-time bucket but still
+  counted in `done`.
+
+### `GET /api/v1/missions/stats/managers`
+
+Each manager row gains four subtask counters and three share/rate
+percentages. `totals` and the sort order are also updated to include
+subtask volume.
+
+```jsonc
+{
+  "totals": {
+    "created": 80, "reviewed": 95, "received": 110, "rejected": 5,
+    "subtasks_created": 210,
+    "subtasks_reviewed": 60,
+    "subtasks_received": 240,
+    "subtasks_done": 175
+  },
+  "managers": [
+    {
+      "id": 3, "name": "Aziza K.", "role": "team_lead",
+      "created": 18, "reviewed": 22, "received": 14, "rejected": 1,
+      "created_share_pct": 22.5, "...": "...",
+
+      "subtasks_created":   42,
+      "subtasks_reviewed":  12,
+      "subtasks_received":  48,
+      "subtasks_done":      36,
+
+      "subtasks_created_share_pct":  20.0,
+      "subtasks_received_share_pct": 20.0,
+      "subtasks_done_rate_pct":      75.0
+    }
+  ]
+}
+```
+
+- `subtasks_created` — subtasks where the manager is `creator_id`
+- `subtasks_reviewed` — subtasks where the manager is `reviewer_id`
+- `subtasks_received` — subtasks where the manager is `executor_id`
+- `subtasks_done` — subset of `subtasks_received` that are `is_done` or
+  `status in (completed, approved)`
+- `subtasks_done_rate_pct` — `subtasks_done / subtasks_received`
+- Subtask rows are filtered by `created_at` within the same
+  `[from_date, to_date]` window the endpoint already accepts for
+  missions.
