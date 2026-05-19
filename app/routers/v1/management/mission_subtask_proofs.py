@@ -131,7 +131,7 @@ async def upload_proof(
 
     recipients = {
         mission.executor_id, mission.reviewer_id, mission.creator_id,
-        subtask.executor_id, subtask.creator_id, subtask.reviewer_id,
+        subtask.executor_id, subtask.creator_id,
     } - {creator_id, None}
     for uid in recipients:
         u = db.query(User).filter(User.id == uid).first()

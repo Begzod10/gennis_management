@@ -8,13 +8,11 @@ completion proofs.
 
 ## What changed on `MissionSubtask`
 
-The subtask model has been extended to match the shape of a `Mission`. New
-columns:
+The subtask model gained mission-like lifecycle columns. New columns:
 
 | Column          | Type      | Notes |
 |-----------------|-----------|-------|
 | `creator_id`    | bigint    | FK → `user.id`. Set automatically from the `creator_id` query param on POST. |
-| `reviewer_id`   | bigint    | FK → `user.id`. Optional. |
 | `description`   | text      | Long-form description, same role as on mission. |
 | `status`        | varchar   | Same enum vocabulary as mission (`not_started`, `in_progress`, `blocked`, `completed`, `approved`, `declined`, `recheck`). Defaults to `not_started`. |
 | `start_date`    | date      | Defaults to today on the server. |
@@ -25,6 +23,12 @@ columns:
 
 The original `executor_id`, `title`, `is_done`, `order`, `deleted` fields are
 unchanged.
+
+> Subtasks have **no** `reviewer_id`. Approval stays at the mission level
+> (`Mission.reviewer_id`, `Mission.approval_status`, `Mission.approved_by_id`).
+> Adding a parallel approval flow on every subtask was rejected as
+> over-modeling — most subtasks are checklist items and the mission's
+> reviewer signs off on the whole bundle.
 
 Three relationships were added: `comments`, `attachments`, `proofs`. They
 behave identically to the mission-level counterparts.
@@ -37,10 +41,8 @@ behave identically to the mission-level counterparts.
   "mission_id": 17,
   "creator_id": 3,
   "executor_id": 5,
-  "reviewer_id": null,
   "creator":  { "id": 3, "name": "Aziza", "surname": "K." },
   "executor": { "id": 5, "name": "Bobur", "surname": "M." },
-  "reviewer": null,
   "title": "Prepare draft",
   "description": "Outline the proposal in 1 page",
   "is_done": false,
@@ -50,9 +52,34 @@ behave identically to the mission-level counterparts.
   "deadline":   "2026-05-22",
   "finish_date": null,
   "created_at": "2026-05-19T08:11:42",
-  "updated_at": "2026-05-19T09:02:10"
+  "updated_at": "2026-05-19T09:02:10",
+
+  // ── Derived fields populated by the list/detail/POST/PATCH endpoints ──
+  "comments_count":    4,    // count of non-deleted MissionSubtaskComment
+  "attachments_count": 2,    // count of non-deleted MissionSubtaskAttachment
+  "proofs_count":      1,    // count of non-deleted MissionSubtaskProof
+  "is_overdue":  false,      // true when deadline < today AND not done
+  "days_left":   3           // (deadline - today).days, or null when no deadline
 }
 ```
+
+Notes on the derived fields:
+
+- `is_overdue` evaluates `is_done OR status ∈ (completed, approved)` as
+  "done". Past-deadline subtasks that are already done are **not** flagged.
+- `days_left` is negative once the deadline has passed. Use it together
+  with `is_overdue` for the overdue badge.
+- All four counters exclude soft-deleted rows.
+
+### List / Get endpoints
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET`  | `/api/v1/missions/{mission_id}/subtasks/`               | Ordered by `order ASC`. Eager-loads `creator` and `executor`, and computes the four derived counters in a single batched query — no N+1. |
+| `GET`  | `/api/v1/missions/{mission_id}/subtasks/{subtask_id}`   | Same enriched shape for a single subtask. Returns `404` when missing or soft-deleted. |
+| `POST` | `/api/v1/missions/{mission_id}/subtasks/?creator_id=…`  | Returns the enriched shape; counters start at zero. |
+| `PATCH`| `/api/v1/missions/{mission_id}/subtasks/{subtask_id}`   | Returns the enriched shape. Auto-fills `finish_date = today` the first time a subtask transitions to done (`is_done=true` or `status ∈ completed/approved`) if `finish_date` is null. |
+| `DELETE`| `/api/v1/missions/{mission_id}/subtasks/{subtask_id}`  | Soft-deletes the subtask. |
 
 ### Create / Update subtask payloads
 
@@ -66,7 +93,6 @@ behave identically to the mission-level counterparts.
   "status": "not_started",         // optional
   "creator_id": 3,                 // optional in body; falls back to query param
   "executor_id": 5,                // optional
-  "reviewer_id": null,             // optional
   "deadline": "2026-05-22"         // optional
 }
 ```
@@ -86,9 +112,9 @@ the mission and the subtask exist (and are not soft-deleted). They return
 
 Each successful create / update / delete is mirrored to the linked Gennis
 and/or Turon row when the parent mission has a `gennis_executor_id` /
-`turon_executor_id`. Participants of the parent mission and the subtask
-(`creator`, `executor`, `reviewer` on both sides) receive a Telegram push
-when a comment / attachment / proof is added.
+`turon_executor_id`. Participants of the parent mission (`creator`,
+`executor`, `reviewer`) plus the subtask's `creator` and `executor`
+receive a Telegram push when a comment / attachment / proof is added.
 
 | Endpoint                                                                                       | Section |
 |------------------------------------------------------------------------------------------------|---------|
@@ -286,7 +312,7 @@ When a comment / attachment / proof is added under a subtask, the API
 sends Telegram notifications (via Celery) to the union of:
 
 - mission `creator_id`, `executor_id`, `reviewer_id`
-- subtask `creator_id`, `executor_id`, `reviewer_id`
+- subtask `creator_id`, `executor_id`
 
 minus the actor (`user_id` / `creator_id` of the request) and minus any
 `null`s. Users without a `telegram_id` are silently skipped.
@@ -455,7 +481,6 @@ subtask volume.
   "totals": {
     "created": 80, "reviewed": 95, "received": 110, "rejected": 5,
     "subtasks_created": 210,
-    "subtasks_reviewed": 60,
     "subtasks_received": 240,
     "subtasks_done": 175
   },
@@ -466,7 +491,6 @@ subtask volume.
       "created_share_pct": 22.5, "...": "...",
 
       "subtasks_created":   42,
-      "subtasks_reviewed":  12,
       "subtasks_received":  48,
       "subtasks_done":      36,
 
@@ -479,11 +503,11 @@ subtask volume.
 ```
 
 - `subtasks_created` — subtasks where the manager is `creator_id`
-- `subtasks_reviewed` — subtasks where the manager is `reviewer_id`
 - `subtasks_received` — subtasks where the manager is `executor_id`
 - `subtasks_done` — subset of `subtasks_received` that are `is_done` or
   `status in (completed, approved)`
 - `subtasks_done_rate_pct` — `subtasks_done / subtasks_received`
+- There is no `subtasks_reviewed` counter — subtasks have no reviewer.
 - Subtask rows are filtered by `created_at` within the same
   `[from_date, to_date]` window the endpoint already accepts for
   missions.

@@ -1,13 +1,66 @@
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from app.database import get_db, get_gennis_write_db, get_turon_write_db
-from app.models import Mission, MissionSubtask, User
+from app.models import (
+    Mission, MissionSubtask, MissionSubtaskComment,
+    MissionSubtaskAttachment, MissionSubtaskProof, User,
+)
 from app.schemas import MissionSubtaskCreate, MissionSubtaskUpdate, MissionSubtaskOut
 from app.external_models.gennis import GennisMission, GennisMissionSubtask
 from app.external_models.turon import TuronMission, TuronMissionSubtask
 from app.tasks import send_telegram_notification
 from app.services.telegram import tpl_subtask_added, tpl_subtask_assigned
+
+_DONE_STATUSES = ("completed", "approved")
+
+
+def _enrich(subtask: MissionSubtask, counts: dict[int, dict[str, int]]) -> MissionSubtaskOut:
+    out = MissionSubtaskOut.model_validate(subtask)
+    c = counts.get(subtask.id, {})
+    out.comments_count = c.get("comments", 0)
+    out.attachments_count = c.get("attachments", 0)
+    out.proofs_count = c.get("proofs", 0)
+    today = date.today()
+    if subtask.deadline:
+        out.days_left = (subtask.deadline - today).days
+        is_done = subtask.is_done or (subtask.status in _DONE_STATUSES)
+        out.is_overdue = (subtask.deadline < today) and not is_done
+    return out
+
+
+def _collect_counts(db: Session, subtask_ids: List[int]) -> dict[int, dict[str, int]]:
+    if not subtask_ids:
+        return {}
+    counts: dict[int, dict[str, int]] = {sid: {"comments": 0, "attachments": 0, "proofs": 0} for sid in subtask_ids}
+
+    comment_rows = (
+        db.query(MissionSubtaskComment.subtask_id, func.count(MissionSubtaskComment.id))
+        .filter(MissionSubtaskComment.subtask_id.in_(subtask_ids), MissionSubtaskComment.deleted == False)
+        .group_by(MissionSubtaskComment.subtask_id).all()
+    )
+    for sid, n in comment_rows:
+        counts[sid]["comments"] = n
+
+    attachment_rows = (
+        db.query(MissionSubtaskAttachment.subtask_id, func.count(MissionSubtaskAttachment.id))
+        .filter(MissionSubtaskAttachment.subtask_id.in_(subtask_ids), MissionSubtaskAttachment.deleted == False)
+        .group_by(MissionSubtaskAttachment.subtask_id).all()
+    )
+    for sid, n in attachment_rows:
+        counts[sid]["attachments"] = n
+
+    proof_rows = (
+        db.query(MissionSubtaskProof.subtask_id, func.count(MissionSubtaskProof.id))
+        .filter(MissionSubtaskProof.subtask_id.in_(subtask_ids), MissionSubtaskProof.deleted == False)
+        .group_by(MissionSubtaskProof.subtask_id).all()
+    )
+    for sid, n in proof_rows:
+        counts[sid]["proofs"] = n
+
+    return counts
 
 router = APIRouter(prefix="/missions/{mission_id}/subtasks", tags=["Mission Subtasks"])
 
@@ -136,15 +189,46 @@ def create_subtask(
                 tpl_subtask_assigned(recipient_name, mission.title, subtask.title, creator_name or "—"),
             )
 
-    return subtask
+    return _enrich(subtask, _collect_counts(db, [subtask.id]))
 
 
 @router.get("/", response_model=List[MissionSubtaskOut])
 def list_subtasks(mission_id: int, db: Session = Depends(get_db)):
     _get_mission(db, mission_id)
-    return db.query(MissionSubtask).filter(
-        MissionSubtask.mission_id == mission_id, MissionSubtask.deleted == False
-    ).order_by(MissionSubtask.order).all()
+    subtasks = (
+        db.query(MissionSubtask)
+        .options(
+            selectinload(MissionSubtask.creator),
+            selectinload(MissionSubtask.executor),
+        )
+        .filter(MissionSubtask.mission_id == mission_id, MissionSubtask.deleted == False)
+        .order_by(MissionSubtask.order)
+        .all()
+    )
+    counts = _collect_counts(db, [s.id for s in subtasks])
+    return [_enrich(s, counts) for s in subtasks]
+
+
+@router.get("/{subtask_id}", response_model=MissionSubtaskOut)
+def get_subtask(mission_id: int, subtask_id: int, db: Session = Depends(get_db)):
+    _get_mission(db, mission_id)
+    subtask = (
+        db.query(MissionSubtask)
+        .options(
+            selectinload(MissionSubtask.creator),
+            selectinload(MissionSubtask.executor),
+        )
+        .filter(
+            MissionSubtask.id == subtask_id,
+            MissionSubtask.mission_id == mission_id,
+            MissionSubtask.deleted == False,
+        )
+        .first()
+    )
+    if not subtask:
+        raise HTTPException(status_code=404, detail="Subtask not found")
+    counts = _collect_counts(db, [subtask.id])
+    return _enrich(subtask, counts)
 
 
 @router.patch("/{subtask_id}", response_model=MissionSubtaskOut)
@@ -163,8 +247,13 @@ def update_subtask(
     if not subtask:
         raise HTTPException(status_code=404, detail="Subtask not found")
     old_executor_id = subtask.executor_id
+    was_done = subtask.is_done or (subtask.status in _DONE_STATUSES)
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(subtask, field, value)
+    # Auto-fill finish_date the first time a subtask flips to done.
+    now_done = subtask.is_done or (subtask.status in _DONE_STATUSES)
+    if now_done and not was_done and subtask.finish_date is None:
+        subtask.finish_date = date.today()
     db.commit()
     db.refresh(subtask)
     _sync_subtask_gennis(mission, subtask, gennis_db)
@@ -181,7 +270,7 @@ def update_subtask(
                 tpl_subtask_assigned(recipient_name, mission.title, subtask.title, "—"),
             )
 
-    return subtask
+    return _enrich(subtask, _collect_counts(db, [subtask.id]))
 
 
 @router.delete("/{subtask_id}", status_code=204)

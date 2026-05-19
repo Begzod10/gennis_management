@@ -1855,10 +1855,6 @@ def manager_mission_stats(
             *subtask_base_filters,
             MissionSubtask.creator_id == m.id,
         ).count()
-        sub_reviewed = db.query(MissionSubtask).filter(
-            *subtask_base_filters,
-            MissionSubtask.reviewer_id == m.id,
-        ).count()
         sub_received = db.query(MissionSubtask).filter(
             *subtask_base_filters,
             MissionSubtask.executor_id == m.id,
@@ -1888,7 +1884,6 @@ def manager_mission_stats(
             "received": received,
             "rejected": rejected,
             "subtasks_created": sub_created,
-            "subtasks_reviewed": sub_reviewed,
             "subtasks_received": sub_received,
             "subtasks_done": sub_done,
         })
@@ -1899,7 +1894,6 @@ def manager_mission_stats(
         "received": sum(r["received"] for r in raw),
         "rejected": sum(r["rejected"] for r in raw),
         "subtasks_created": sum(r["subtasks_created"] for r in raw),
-        "subtasks_reviewed": sum(r["subtasks_reviewed"] for r in raw),
         "subtasks_received": sum(r["subtasks_received"] for r in raw),
         "subtasks_done": sum(r["subtasks_done"] for r in raw),
     }

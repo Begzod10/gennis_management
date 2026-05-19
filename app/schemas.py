@@ -420,7 +420,6 @@ class MissionSubtaskCreate(BaseModel):
     status: Optional[str] = "not_started"
     creator_id: Optional[int] = None
     executor_id: Optional[int] = None
-    reviewer_id: Optional[int] = None
     deadline: Optional[date] = None
 
 
@@ -432,7 +431,6 @@ class MissionSubtaskUpdate(BaseModel):
     status: Optional[str] = None
     creator_id: Optional[int] = None
     executor_id: Optional[int] = None
-    reviewer_id: Optional[int] = None
     deadline: Optional[date] = None
     finish_date: Optional[date] = None
 
@@ -442,10 +440,8 @@ class MissionSubtaskOut(BaseModel):
     mission_id: int
     creator_id: Optional[int] = None
     executor_id: Optional[int] = None
-    reviewer_id: Optional[int] = None
     creator: Optional[UserOut] = None
     executor: Optional[UserOut] = None
-    reviewer: Optional[UserOut] = None
     title: str
     description: Optional[str] = None
     is_done: bool
@@ -456,6 +452,13 @@ class MissionSubtaskOut(BaseModel):
     finish_date: Optional[date] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    # Derived / aggregate fields populated by the list/detail endpoints.
+    comments_count: int = 0
+    attachments_count: int = 0
+    proofs_count: int = 0
+    is_overdue: bool = False
+    days_left: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

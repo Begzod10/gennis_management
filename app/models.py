@@ -262,7 +262,6 @@ class MissionSubtask(Base):
     mission_id = Column(BigInteger, ForeignKey("mission.id"), nullable=False)
     creator_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
     executor_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
-    reviewer_id = Column(BigInteger, ForeignKey("user.id"), nullable=True)
 
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -281,7 +280,6 @@ class MissionSubtask(Base):
     mission = relationship("Mission", back_populates="subtasks")
     creator = relationship("User", foreign_keys=[creator_id])
     executor = relationship("User", foreign_keys=[executor_id])
-    reviewer = relationship("User", foreign_keys=[reviewer_id])
     comments = relationship("MissionSubtaskComment", back_populates="subtask", cascade="all, delete-orphan")
     attachments = relationship("MissionSubtaskAttachment", back_populates="subtask", cascade="all, delete-orphan")
     proofs = relationship("MissionSubtaskProof", back_populates="subtask", cascade="all, delete-orphan")
