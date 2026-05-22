@@ -528,17 +528,25 @@ def _get_total(
 
 
 def _month_year_filter_gennis(q, model, month, year, from_date: Optional[date] = None, to_date: Optional[date] = None):
-    """Join CalendarMonth and apply month/year and/or from/to date filters."""
-    if month or year or from_date or to_date:
+    """Apply month/year (on CalendarMonth) and from_date/to_date (on CalendarDay) filters.
+
+    Day-precise filtering on CalendarDay matches the Gennis backend's own
+    account_details route, which always bounds by the actual transaction
+    day — not by the calendar_month bucket. Filtering on CalendarMonth
+    would let forward/backward-dated rows leak past the date window.
+    """
+    if month or year:
         q = q.join(G.CalendarMonth, G.CalendarMonth.id == model.calendar_month)
         if month:
             q = q.filter(extract("month", G.CalendarMonth.date) == month)
         if year:
             q = q.filter(extract("year", G.CalendarMonth.date) == year)
+    if from_date or to_date:
+        q = q.join(G.CalendarDay, G.CalendarDay.id == model.calendar_day)
         if from_date:
-            q = q.filter(G.CalendarMonth.date >= from_date)
+            q = q.filter(G.CalendarDay.date >= from_date)
         if to_date:
-            q = q.filter(G.CalendarMonth.date < to_date + timedelta(days=1))
+            q = q.filter(G.CalendarDay.date < to_date + timedelta(days=1))
     return q
 
 
@@ -566,12 +574,15 @@ def gennis_payments(
     to_date: Optional[date] = Query(None),
 ):
     """Student payments in Gennis — total + breakdown by payment type."""
+    # Match Gennis backend's account_details: only count confirmed payments
+    # (payment == True). Excludes drafts / unconfirmed / cancelled rows.
     rows = (
         db.query(
             G.PaymentTypes.name,
             func.coalesce(func.sum(G.StudentPayments.payment_sum), 0).label("total"),
         )
         .join(G.PaymentTypes, G.PaymentTypes.id == G.StudentPayments.payment_type_id)
+        .filter(G.StudentPayments.payment == True)
     )
     rows = _month_year_filter_gennis(rows, G.StudentPayments, month, year, from_date=from_date, to_date=to_date)
     if location_id:
@@ -735,7 +746,9 @@ def turon_payments(
             func.coalesce(func.sum(T.StudentPayment.payment_sum), 0).label("total"),
         )
         .join(T.PaymentTypes, T.PaymentTypes.id == T.StudentPayment.payment_type_id)
-        .filter(T.StudentPayment.deleted == False, T.StudentPayment.status == True)
+        # Match Turon encashment/views and permissions/response: revenue is
+        # status == False (status == True represents already-encashed rows).
+        .filter(T.StudentPayment.deleted == False, T.StudentPayment.status == False)
     )
     rows = _month_year_filter_turon(rows, T.StudentPayment.date, month, year, from_date=from_date, to_date=to_date)
     if branch_id:
