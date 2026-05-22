@@ -9,9 +9,14 @@ Usage:
 """
 import argparse
 import re
+import sys
+from pathlib import Path
 
-from app.database import SessionLocal
-from app.models import User
+# Allow running as `python scripts/cleanup_user_names.py` from the project root.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.database import SessionLocal  # noqa: E402
+from app.models import User  # noqa: E402
 
 
 def cleaned_name(name: str, surname: str) -> str:
