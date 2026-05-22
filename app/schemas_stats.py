@@ -116,6 +116,7 @@ class GennisSummary(BaseModel):
     teacher_salaries: ByPaymentType
     staff_salaries: ByPaymentType
     overheads: GennisOverheadSummary
+    capitals: ByPaymentType
     dividends: int
     investments: int
     total_expenses: int
@@ -127,6 +128,7 @@ class TuronSummary(BaseModel):
     teacher_salaries: ByPaymentType
     staff_salaries: ByPaymentType
     overheads: TuronOverheadSummary
+    capitals: ByPaymentType
     dividends: int
     investments: int
     total_expenses: int
@@ -138,6 +140,7 @@ class CombinedStats(BaseModel):
     total_teacher_salaries: int
     total_staff_salaries: int
     total_overheads: int
+    total_capitals: int
     total_dividends: int
     total_investments: int
     total_expenses: int

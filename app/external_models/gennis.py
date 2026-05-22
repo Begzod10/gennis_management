@@ -475,6 +475,18 @@ class Overhead(GennisBase):
     calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
 
 
+class CapitalExpenditure(GennisBase):
+    __tablename__ = "capital_expenditure"
+    id = Column(Integer, primary_key=True)
+    item_sum = Column(Integer)
+    item_name = Column(String)
+    payment_type_id = Column(Integer, ForeignKey("paymenttypes.id"))
+    location_id = Column(Integer, ForeignKey("locations.id"))
+    calendar_day = Column(Integer, ForeignKey("calendarday.id"), nullable=True)
+    calendar_month = Column(Integer, ForeignKey("calendarmonth.id"))
+    calendar_year = Column(Integer, ForeignKey("calendaryear.id"))
+
+
 class OverheadTypeLog(GennisBase):
     __tablename__ = "overheadtypelog"
     id = Column(Integer, primary_key=True)
