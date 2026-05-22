@@ -497,7 +497,17 @@ def gennis_api_usage_by_section(
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 
-def _get_total(local_db: Session, model, source: str, month, year, location_id=None, branch_id=None) -> int:
+def _get_total(
+    local_db: Session,
+    model,
+    source: str,
+    month,
+    year,
+    location_id=None,
+    branch_id=None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+) -> int:
     q = local_db.query(
         func.coalesce(func.sum(model.amount), 0)
     ).filter(model.source == source, model.deleted == False)
@@ -505,6 +515,10 @@ def _get_total(local_db: Session, model, source: str, month, year, location_id=N
         q = q.filter(extract("month", model.date) == month)
     if year:
         q = q.filter(extract("year", model.date) == year)
+    if from_date:
+        q = q.filter(model.date >= from_date)
+    if to_date:
+        q = q.filter(model.date < to_date + timedelta(days=1))
     if location_id:
         q = q.filter(model.location_id == location_id)
     if branch_id:
@@ -513,22 +527,30 @@ def _get_total(local_db: Session, model, source: str, month, year, location_id=N
 
 
 
-def _month_year_filter_gennis(q, model, month, year):
-    """Join CalendarMonth and apply month/year extract filters."""
-    if month or year:
+def _month_year_filter_gennis(q, model, month, year, from_date: Optional[date] = None, to_date: Optional[date] = None):
+    """Join CalendarMonth and apply month/year and/or from/to date filters."""
+    if month or year or from_date or to_date:
         q = q.join(G.CalendarMonth, G.CalendarMonth.id == model.calendar_month)
         if month:
             q = q.filter(extract("month", G.CalendarMonth.date) == month)
         if year:
             q = q.filter(extract("year", G.CalendarMonth.date) == year)
+        if from_date:
+            q = q.filter(G.CalendarMonth.date >= from_date)
+        if to_date:
+            q = q.filter(G.CalendarMonth.date < to_date + timedelta(days=1))
     return q
 
 
-def _month_year_filter_turon(q, date_col, month, year):
+def _month_year_filter_turon(q, date_col, month, year, from_date: Optional[date] = None, to_date: Optional[date] = None):
     if month:
         q = q.filter(extract("month", date_col) == month)
     if year:
         q = q.filter(extract("year", date_col) == year)
+    if from_date:
+        q = q.filter(date_col >= from_date)
+    if to_date:
+        q = q.filter(date_col < to_date + timedelta(days=1))
     return q
 
 
@@ -540,6 +562,8 @@ def gennis_payments(
     year: Optional[int] = Query(None, ge=2000),
     location_id: Optional[int] = Query(None),
     db: Session = Depends(get_gennis_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Student payments in Gennis — total + breakdown by payment type."""
     rows = (
@@ -549,7 +573,7 @@ def gennis_payments(
         )
         .join(G.PaymentTypes, G.PaymentTypes.id == G.StudentPayments.payment_type_id)
     )
-    rows = _month_year_filter_gennis(rows, G.StudentPayments, month, year)
+    rows = _month_year_filter_gennis(rows, G.StudentPayments, month, year, from_date=from_date, to_date=to_date)
     if location_id:
         rows = rows.filter(G.StudentPayments.location_id == location_id)
     rows = rows.group_by(G.PaymentTypes.name).all()
@@ -566,6 +590,8 @@ def gennis_teacher_salaries(
     year: Optional[int] = Query(None, ge=2000),
     location_id: Optional[int] = Query(None),
     db: Session = Depends(get_gennis_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Teacher salary transactions in Gennis — total + breakdown by payment type."""
     rows = (
@@ -575,7 +601,7 @@ def gennis_teacher_salaries(
         )
         .join(G.PaymentTypes, G.PaymentTypes.id == G.TeacherSalaries.payment_type_id)
     )
-    rows = _month_year_filter_gennis(rows, G.TeacherSalaries, month, year)
+    rows = _month_year_filter_gennis(rows, G.TeacherSalaries, month, year, from_date=from_date, to_date=to_date)
     if location_id:
         rows = rows.filter(G.TeacherSalaries.location_id == location_id)
     rows = rows.group_by(G.PaymentTypes.name).all()
@@ -592,6 +618,8 @@ def gennis_staff_salaries(
     year: Optional[int] = Query(None, ge=2000),
     location_id: Optional[int] = Query(None),
     db: Session = Depends(get_gennis_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Staff salary transactions in Gennis — total + breakdown by payment type."""
     rows = (
@@ -601,7 +629,7 @@ def gennis_staff_salaries(
         )
         .join(G.PaymentTypes, G.PaymentTypes.id == G.StaffSalaries.payment_type_id)
     )
-    rows = _month_year_filter_gennis(rows, G.StaffSalaries, month, year)
+    rows = _month_year_filter_gennis(rows, G.StaffSalaries, month, year, from_date=from_date, to_date=to_date)
     if location_id:
         rows = rows.filter(G.StaffSalaries.location_id == location_id)
     rows = rows.group_by(G.PaymentTypes.name).all()
@@ -618,6 +646,8 @@ def gennis_overheads(
     year: Optional[int] = Query(None, ge=2000),
     location_id: Optional[int] = Query(None),
     db: Session = Depends(get_gennis_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Overhead expenses in Gennis — total + breakdown by overhead item name + by payment type."""
     # by item name
@@ -627,7 +657,7 @@ def gennis_overheads(
             func.coalesce(func.sum(G.Overhead.item_sum), 0).label("total"),
         )
     )
-    item_rows = _month_year_filter_gennis(item_rows, G.Overhead, month, year)
+    item_rows = _month_year_filter_gennis(item_rows, G.Overhead, month, year, from_date=from_date, to_date=to_date)
     if location_id:
         item_rows = item_rows.filter(G.Overhead.location_id == location_id)
     item_rows = item_rows.group_by(G.Overhead.item_name).all()
@@ -640,7 +670,7 @@ def gennis_overheads(
         )
         .join(G.PaymentTypes, G.PaymentTypes.id == G.Overhead.payment_type_id)
     )
-    type_rows = _month_year_filter_gennis(type_rows, G.Overhead, month, year)
+    type_rows = _month_year_filter_gennis(type_rows, G.Overhead, month, year, from_date=from_date, to_date=to_date)
     if location_id:
         type_rows = type_rows.filter(G.Overhead.location_id == location_id)
     type_rows = type_rows.group_by(G.PaymentTypes.name).all()
@@ -661,14 +691,16 @@ def gennis_summary(
     location_id: Optional[int] = Query(None),
     db: Session = Depends(get_gennis_db),
     local_db: Session = Depends(get_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Full Gennis summary: payments, teacher salaries, staff salaries, overheads, dividends, remaining."""
-    payments = gennis_payments(month, year, location_id, db)
-    teacher_salaries = gennis_teacher_salaries(month, year, location_id, db)
-    staff_salaries = gennis_staff_salaries(month, year, location_id, db)
-    overheads = gennis_overheads(month, year, location_id, db)
-    dividends = _get_total(local_db, Dividend, "gennis", month, year, location_id=location_id)
-    investments = _get_total(local_db, Investment, "gennis", month, year, location_id=location_id)
+    payments = gennis_payments(month, year, location_id, db, from_date=from_date, to_date=to_date)
+    teacher_salaries = gennis_teacher_salaries(month, year, location_id, db, from_date=from_date, to_date=to_date)
+    staff_salaries = gennis_staff_salaries(month, year, location_id, db, from_date=from_date, to_date=to_date)
+    overheads = gennis_overheads(month, year, location_id, db, from_date=from_date, to_date=to_date)
+    dividends = _get_total(local_db, Dividend, "gennis", month, year, location_id=location_id, from_date=from_date, to_date=to_date)
+    investments = _get_total(local_db, Investment, "gennis", month, year, location_id=location_id, from_date=from_date, to_date=to_date)
 
     total_expenses = teacher_salaries["total"] + staff_salaries["total"] + overheads["total"] + dividends
     remaining = payments["total"] + investments - total_expenses
@@ -693,6 +725,8 @@ def turon_payments(
     year: Optional[int] = Query(None, ge=2000),
     branch_id: Optional[int] = Query(None),
     db: Session = Depends(get_turon_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Student payments in Turon — total + breakdown by payment type."""
     rows = (
@@ -703,7 +737,7 @@ def turon_payments(
         .join(T.PaymentTypes, T.PaymentTypes.id == T.StudentPayment.payment_type_id)
         .filter(T.StudentPayment.deleted == False, T.StudentPayment.status == True)
     )
-    rows = _month_year_filter_turon(rows, T.StudentPayment.date, month, year)
+    rows = _month_year_filter_turon(rows, T.StudentPayment.date, month, year, from_date=from_date, to_date=to_date)
     if branch_id:
         rows = rows.filter(T.StudentPayment.branch_id == branch_id)
     rows = rows.group_by(T.PaymentTypes.name).all()
@@ -720,6 +754,8 @@ def turon_teacher_salaries(
     year: Optional[int] = Query(None, ge=2000),
     branch_id: Optional[int] = Query(None),
     db: Session = Depends(get_turon_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Teacher salary payments in Turon — total + breakdown by payment type."""
     rows = (
@@ -730,7 +766,7 @@ def turon_teacher_salaries(
         .join(T.PaymentTypes, T.PaymentTypes.id == T.TeacherSalaryList.payment_id)
         .filter(T.TeacherSalaryList.deleted == False)
     )
-    rows = _month_year_filter_turon(rows, T.TeacherSalaryList.date, month, year)
+    rows = _month_year_filter_turon(rows, T.TeacherSalaryList.date, month, year, from_date=from_date, to_date=to_date)
     if branch_id:
         rows = rows.filter(T.TeacherSalaryList.branch_id == branch_id)
     rows = rows.group_by(T.PaymentTypes.name).all()
@@ -747,6 +783,8 @@ def turon_staff_salaries(
     year: Optional[int] = Query(None, ge=2000),
     branch_id: Optional[int] = Query(None),
     db: Session = Depends(get_turon_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Staff (user) salary payments in Turon — total + breakdown by payment type."""
     rows = (
@@ -757,7 +795,7 @@ def turon_staff_salaries(
         .join(T.PaymentTypes, T.PaymentTypes.id == T.UserSalaryList.payment_types_id)
         .filter(T.UserSalaryList.deleted == False)
     )
-    rows = _month_year_filter_turon(rows, T.UserSalaryList.date, month, year)
+    rows = _month_year_filter_turon(rows, T.UserSalaryList.date, month, year, from_date=from_date, to_date=to_date)
     if branch_id:
         rows = rows.filter(T.UserSalaryList.branch_id == branch_id)
     rows = rows.group_by(T.PaymentTypes.name).all()
@@ -774,6 +812,8 @@ def turon_overheads(
     year: Optional[int] = Query(None, ge=2000),
     branch_id: Optional[int] = Query(None),
     db: Session = Depends(get_turon_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Overhead expenses in Turon — total + breakdown by overhead type + by payment type."""
     # by overhead type
@@ -785,7 +825,7 @@ def turon_overheads(
         .join(T.OverheadType, T.OverheadType.id == T.Overhead.type_id)
         .filter(T.Overhead.deleted == False)
     )
-    type_rows = _month_year_filter_turon(type_rows, T.Overhead.created, month, year)
+    type_rows = _month_year_filter_turon(type_rows, T.Overhead.created, month, year, from_date=from_date, to_date=to_date)
     if branch_id:
         type_rows = type_rows.filter(T.Overhead.branch_id == branch_id)
     type_rows = type_rows.group_by(T.OverheadType.name).all()
@@ -799,7 +839,7 @@ def turon_overheads(
         .join(T.PaymentTypes, T.PaymentTypes.id == T.Overhead.payment_id)
         .filter(T.Overhead.deleted == False)
     )
-    pay_rows = _month_year_filter_turon(pay_rows, T.Overhead.created, month, year)
+    pay_rows = _month_year_filter_turon(pay_rows, T.Overhead.created, month, year, from_date=from_date, to_date=to_date)
     if branch_id:
         pay_rows = pay_rows.filter(T.Overhead.branch_id == branch_id)
     pay_rows = pay_rows.group_by(T.PaymentTypes.name).all()
@@ -820,14 +860,16 @@ def turon_summary(
     branch_id: Optional[int] = Query(None),
     db: Session = Depends(get_turon_db),
     local_db: Session = Depends(get_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Full Turon summary: payments, teacher salaries, staff salaries, overheads, dividends, remaining."""
-    payments = turon_payments(month, year, branch_id, db)
-    teacher_salaries = turon_teacher_salaries(month, year, branch_id, db)
-    staff_salaries = turon_staff_salaries(month, year, branch_id, db)
-    overheads = turon_overheads(month, year, branch_id, db)
-    dividends = _get_total(local_db, Dividend, "turon", month, year, branch_id=branch_id)
-    investments = _get_total(local_db, Investment, "turon", month, year, branch_id=branch_id)
+    payments = turon_payments(month, year, branch_id, db, from_date=from_date, to_date=to_date)
+    teacher_salaries = turon_teacher_salaries(month, year, branch_id, db, from_date=from_date, to_date=to_date)
+    staff_salaries = turon_staff_salaries(month, year, branch_id, db, from_date=from_date, to_date=to_date)
+    overheads = turon_overheads(month, year, branch_id, db, from_date=from_date, to_date=to_date)
+    dividends = _get_total(local_db, Dividend, "turon", month, year, branch_id=branch_id, from_date=from_date, to_date=to_date)
+    investments = _get_total(local_db, Investment, "turon", month, year, branch_id=branch_id, from_date=from_date, to_date=to_date)
 
     total_expenses = teacher_salaries["total"] + staff_salaries["total"] + overheads["total"] + dividends
     remaining = payments["total"] + investments - total_expenses
@@ -855,10 +897,12 @@ def overview(
     gennis_db: Session = Depends(get_gennis_db),
     turon_db: Session = Depends(get_turon_db),
     local_db: Session = Depends(get_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
 ):
     """Director dashboard: combined stats from both systems."""
-    g = gennis_summary(month, year, gennis_location_id, gennis_db, local_db)
-    t = turon_summary(month, year, turon_branch_id, turon_db, local_db)
+    g = gennis_summary(month, year, gennis_location_id, gennis_db, local_db, from_date=from_date, to_date=to_date)
+    t = turon_summary(month, year, turon_branch_id, turon_db, local_db, from_date=from_date, to_date=to_date)
 
     total_payments = g["payments"]["total"] + t["payments"]["total"]
     total_teacher_salaries = g["teacher_salaries"]["total"] + t["teacher_salaries"]["total"]
@@ -871,7 +915,7 @@ def overview(
     remaining = total_payments + total_dividends - total_expenses
 
     return {
-        "period": {"month": month, "year": year},
+        "period": {"month": month, "year": year, "from_date": from_date, "to_date": to_date},
         "gennis": g,
         "turon": t,
         "combined": {

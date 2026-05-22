@@ -1,6 +1,7 @@
 """
 Pydantic response schemas for statistics, gennis_detail, and turon_detail routes.
 """
+from datetime import date
 from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field
 
@@ -144,8 +145,10 @@ class CombinedStats(BaseModel):
 
 
 class Period(BaseModel):
-    month: Optional[int]
-    year: Optional[int]
+    month: Optional[int] = None
+    year: Optional[int] = None
+    from_date: Optional[date] = None
+    to_date: Optional[date] = None
 
 
 class OverviewOut(BaseModel):
