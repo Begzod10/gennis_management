@@ -257,10 +257,20 @@ def google_auth(auth_request: GoogleAuthRequest, db: Session = Depends(get_db)):
         google_user_info = verify_google_token(auth_request.token)
 
         email = google_user_info.get('email')
-        name = google_user_info.get('name')
         google_id = google_user_info.get('sub')
         picture = google_user_info.get('picture')
         email_verified = google_user_info.get('email_verified', 'false') == 'true'
+
+        # Google returns given_name / family_name separately plus a combined `name`.
+        # Prefer the structured fields; fall back to splitting the combined string
+        # on the first whitespace so legacy/edge profiles still get something usable.
+        given_name = (google_user_info.get('given_name') or '').strip()
+        family_name = (google_user_info.get('family_name') or '').strip()
+        full_name = (google_user_info.get('name') or '').strip()
+        if not given_name and not family_name and full_name:
+            parts = full_name.split(None, 1)
+            given_name = parts[0]
+            family_name = parts[1] if len(parts) > 1 else ''
 
         if not email:
             raise HTTPException(
@@ -272,8 +282,12 @@ def google_auth(auth_request: GoogleAuthRequest, db: Session = Depends(get_db)):
         user = db.query(models.User).filter(models.User.email == email).first()
 
         if user:
-            # Update existing user
-            user.name = name or user.name
+            # Don't clobber edits the user (or an admin) may have made — only
+            # fill blanks from Google.
+            if not (user.name or '').strip() and given_name:
+                user.name = given_name
+            if not (user.surname or '').strip() and family_name:
+                user.surname = family_name
             user.google_id = google_id
             user.profile_photo_url = picture
             user.is_verified = email_verified
@@ -288,8 +302,8 @@ def google_auth(auth_request: GoogleAuthRequest, db: Session = Depends(get_db)):
             random_password = secrets.token_urlsafe(32)
 
             user = models.User(
-                name=name or "User",
-                surname="",
+                name=given_name or "User",
+                surname=family_name,
                 email=email,
                 hashed_password=get_password_hash(random_password),
                 auth_provider="google",
