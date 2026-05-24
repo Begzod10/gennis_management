@@ -32,6 +32,12 @@ from app.external_models.turon import (
     TuronMission,
     CustomUser as TuronUser,
 )
+from app.mobile._perms import (
+    assert_can_approve,
+    assert_can_complete,
+    assert_can_mutate,
+    assert_can_redirect,
+)
 from app.mobile.deps import get_mobile_identity
 from app.mobile.schemas import (
     MobileApprovalStatus,
@@ -211,7 +217,7 @@ def _list_gennis(
     status: Optional[str],
     role: Optional[str],
 ) -> List[MobileMissionOut]:
-    q = gennis_db.query(GennisMission)
+    q = gennis_db.query(GennisMission).filter(GennisMission.deleted == False)
     if role == "executor":
         q = q.filter(GennisMission.executor_id == identity.external_id)
     elif role == "creator":
@@ -242,7 +248,7 @@ def _list_turon(
     status: Optional[str],
     role: Optional[str],
 ) -> List[MobileMissionOut]:
-    q = turon_db.query(TuronMission)
+    q = turon_db.query(TuronMission).filter(TuronMission.deleted == False)
     if role == "executor":
         q = q.filter(TuronMission.executor_id == identity.external_id)
     elif role == "creator":
@@ -306,7 +312,7 @@ def get_mission(
         return _from_management(m, db)
 
     if identity.system == "gennis":
-        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id).first()
+        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id, GennisMission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
         user_ids = {uid for uid in (m.creator_id, m.executor_id, m.reviewer_id) if uid}
@@ -316,7 +322,7 @@ def get_mission(
         }
         return _from_gennis(m, name_index)
 
-    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id).first()
+    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id, TuronMission.deleted == False).first()
     if not m:
         raise HTTPException(status_code=404, detail="Mission not found")
     user_ids = {uid for uid in (m.creator_id, m.executor_id, m.reviewer_id) if uid}
@@ -478,6 +484,7 @@ def change_status(
         m = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_mutate(identity, m)
 
         previous_status = m.status
         m.status = new_status
@@ -520,9 +527,10 @@ def change_status(
         return _from_management(m, db)
 
     if identity.system == "gennis":
-        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id).first()
+        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id, GennisMission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_mutate(identity, m)
         m.status = new_status
         if new_status == "completed" and m.finish_datetime is None and finish_date:
             m.finish_datetime = datetime.combine(finish_date, datetime.min.time())
@@ -537,9 +545,10 @@ def change_status(
         return _from_gennis(m, name_index)
 
     # turon
-    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id).first()
+    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id, TuronMission.deleted == False).first()
     if not m:
         raise HTTPException(status_code=404, detail="Mission not found")
+    assert_can_mutate(identity, m)
     m.status = new_status
     if new_status == "completed" and m.finish_date is None and finish_date:
         m.finish_date = finish_date
@@ -576,6 +585,7 @@ def update_mission(
         m = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_mutate(identity, m)
         old_executor, old_reviewer = m.executor_id, m.reviewer_id
         for field, value in payload.items():
             setattr(m, field, value)
@@ -612,9 +622,10 @@ def update_mission(
         return _from_management(m, db)
 
     if identity.system == "gennis":
-        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id).first()
+        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id, GennisMission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_mutate(identity, m)
         for field, value in payload.items():
             if field == "deadline":
                 m.deadline_datetime = (
@@ -632,9 +643,10 @@ def update_mission(
         _notify_external_pair(db, "gennis", m, name_index, tpl_updated, m.title, changer_name)
         return _from_gennis(m, name_index)
 
-    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id).first()
+    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id, TuronMission.deleted == False).first()
     if not m:
         raise HTTPException(status_code=404, detail="Mission not found")
+    assert_can_mutate(identity, m)
     for field, value in payload.items():
         setattr(m, field, value)
     turon_db.commit()
@@ -658,11 +670,17 @@ def delete_mission(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
-    """Soft-delete a mission in the caller's home system."""
+    """Soft-delete a mission in the caller's home system.
+
+    Soft delete only — the row stays in the DB with `deleted=True` so the
+    history / audit trail isn't destroyed and so notifications can still
+    reference the mission's title.
+    """
     if identity.system == "management":
         m = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_mutate(identity, m)
         _sync_delete(m, gennis_db, turon_db)
         m.deleted = True
         db.commit()
@@ -676,9 +694,10 @@ def delete_mission(
         return
 
     if identity.system == "gennis":
-        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id).first()
+        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id, GennisMission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_mutate(identity, m)
         title = m.title
         executor_id, reviewer_id = m.executor_id, m.reviewer_id
         user_ids = {uid for uid in (executor_id, reviewer_id) if uid}
@@ -686,7 +705,7 @@ def delete_mission(
             u.id: f"{u.name or ''} {u.surname or ''}".strip() or None
             for u in gennis_db.query(GennisUsers).filter(GennisUsers.id.in_(user_ids)).all()
         }
-        gennis_db.delete(m)
+        m.deleted = True
         gennis_db.commit()
         if executor_id:
             _tg_external(db, "gennis", executor_id, name_index.get(executor_id), tpl_deleted, title)
@@ -694,9 +713,10 @@ def delete_mission(
             _tg_external(db, "gennis", reviewer_id, name_index.get(reviewer_id), tpl_deleted, title)
         return
 
-    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id).first()
+    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id, TuronMission.deleted == False).first()
     if not m:
         raise HTTPException(status_code=404, detail="Mission not found")
+    assert_can_mutate(identity, m)
     title = m.title
     executor_id, reviewer_id = m.executor_id, m.reviewer_id
     user_ids = {uid for uid in (executor_id, reviewer_id) if uid}
@@ -704,7 +724,7 @@ def delete_mission(
         u.id: f"{u.name or ''} {u.surname or ''}".strip() or None
         for u in turon_db.query(TuronUser).filter(TuronUser.id.in_(user_ids)).all()
     }
-    turon_db.delete(m)
+    m.deleted = True
     turon_db.commit()
     if executor_id:
         _tg_external(db, "turon", executor_id, name_index.get(executor_id), tpl_deleted, title)
@@ -730,6 +750,7 @@ def complete_mission(
         m = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_complete(identity, m)
         previous_status = m.status
         m.finish_date = finish_date
         m.status = "completed"
@@ -762,9 +783,10 @@ def complete_mission(
         return _from_management(m, db)
 
     if identity.system == "gennis":
-        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id).first()
+        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id, GennisMission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_complete(identity, m)
         m.status = "completed"
         m.finish_datetime = datetime.combine(finish_date, datetime.min.time())
         gennis_db.commit()
@@ -782,9 +804,10 @@ def complete_mission(
             )
         return _from_gennis(m, name_index)
 
-    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id).first()
+    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id, TuronMission.deleted == False).first()
     if not m:
         raise HTTPException(status_code=404, detail="Mission not found")
+    assert_can_complete(identity, m)
     m.status = "completed"
     m.finish_date = finish_date
     turon_db.commit()
@@ -828,6 +851,7 @@ def approve_mission(
         m = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_approve(identity, m)
         m.approval_status = approval
         m.approved_by_id = identity.external_id
         if approval == "approved":
@@ -869,9 +893,10 @@ def approve_mission(
         return _from_management(m, db)
 
     if identity.system == "gennis":
-        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id).first()
+        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id, GennisMission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_approve(identity, m)
         m.status = approval
         gennis_db.commit()
         gennis_db.refresh(m)
@@ -888,9 +913,10 @@ def approve_mission(
             )
         return _from_gennis(m, name_index)
 
-    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id).first()
+    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id, TuronMission.deleted == False).first()
     if not m:
         raise HTTPException(status_code=404, detail="Mission not found")
+    assert_can_approve(identity, m)
     m.status = approval
     turon_db.commit()
     turon_db.refresh(m)
@@ -927,6 +953,7 @@ def redirect_mission(
         m = db.query(Mission).filter(Mission.id == mission_id, Mission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_redirect(identity, m)
         new_executor = db.query(User).filter(User.id == new_executor_id).first()
         if not new_executor:
             raise HTTPException(status_code=404, detail="New executor not found")
@@ -967,9 +994,13 @@ def redirect_mission(
         return _from_management(m, db)
 
     if identity.system == "gennis":
-        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id).first()
+        m = gennis_db.query(GennisMission).filter(GennisMission.id == mission_id, GennisMission.deleted == False).first()
         if not m:
             raise HTTPException(status_code=404, detail="Mission not found")
+        assert_can_redirect(identity, m)
+        new_executor = gennis_db.query(GennisUsers).filter(GennisUsers.id == new_executor_id).first()
+        if not new_executor:
+            raise HTTPException(status_code=404, detail="New executor not found")
         old_executor_id = m.executor_id
         m.executor_id = new_executor_id
         gennis_db.commit()
@@ -992,9 +1023,13 @@ def redirect_mission(
             )
         return _from_gennis(m, name_index)
 
-    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id).first()
+    m = turon_db.query(TuronMission).filter(TuronMission.id == mission_id, TuronMission.deleted == False).first()
     if not m:
         raise HTTPException(status_code=404, detail="Mission not found")
+    assert_can_redirect(identity, m)
+    new_executor = turon_db.query(TuronUser).filter(TuronUser.id == new_executor_id).first()
+    if not new_executor:
+        raise HTTPException(status_code=404, detail="New executor not found")
     old_executor_id = m.executor_id
     m.executor_id = new_executor_id
     turon_db.commit()

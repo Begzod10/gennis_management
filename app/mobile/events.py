@@ -41,6 +41,9 @@ from app.external_models.turon import (
     TuronMissionSubtaskComment,
     TuronMissionSubtaskProof,
 )
+from app.external_models.gennis import GennisMission
+from app.external_models.turon import TuronMission
+from app.mobile._perms import assert_can_mutate
 from app.mobile.deps import get_mobile_identity
 from app.mobile.schemas import (
     MobileAttachmentCreate,
@@ -56,6 +59,7 @@ from app.mobile.schemas import (
     MobileSubtaskUpdate,
 )
 from app.models import (
+    Mission,
     MissionAttachment,
     MissionComment,
     MissionHistory,
@@ -66,6 +70,84 @@ from app.models import (
     MissionSubtaskProof,
     User,
 )
+
+
+# ── Resource lookups w/ 404 + permission guard ───────────────────────────────
+
+def _load_mission(
+    identity: MobileIdentity,
+    mission_id: int,
+    db: Session,
+    gennis_db: Session,
+    turon_db: Session,
+):
+    """Load a mission from the caller's home DB, 404 if missing,
+    403 if the caller isn't a participant (creator/executor/reviewer)."""
+    if identity.system == "management":
+        m = db.query(Mission).filter(
+            Mission.id == mission_id, Mission.deleted == False,
+        ).first()
+    elif identity.system == "gennis":
+        m = gennis_db.query(GennisMission).filter(
+            GennisMission.id == mission_id, GennisMission.deleted == False,
+        ).first()
+    else:
+        m = turon_db.query(TuronMission).filter(
+            TuronMission.id == mission_id, TuronMission.deleted == False,
+        ).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Mission not found")
+    assert_can_mutate(identity, m)
+    return m
+
+
+def _load_subtask(
+    identity: MobileIdentity,
+    subtask_id: int,
+    db: Session,
+    gennis_db: Session,
+    turon_db: Session,
+):
+    """Load a subtask from the caller's home DB, 404 if missing,
+    403 if the caller isn't a participant on the parent mission."""
+    if identity.system == "management":
+        s = db.query(MissionSubtask).filter(
+            MissionSubtask.id == subtask_id, MissionSubtask.deleted == False,
+        ).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Subtask not found")
+        parent = db.query(Mission).filter(
+            Mission.id == s.mission_id, Mission.deleted == False,
+        ).first()
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent mission not found")
+        assert_can_mutate(identity, parent)
+        return s
+    if identity.system == "gennis":
+        s = gennis_db.query(GennisMissionSubtask).filter(
+            GennisMissionSubtask.id == subtask_id,
+        ).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Subtask not found")
+        parent = gennis_db.query(GennisMission).filter(
+            GennisMission.id == s.mission_id, GennisMission.deleted == False,
+        ).first()
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent mission not found")
+        assert_can_mutate(identity, parent)
+        return s
+    s = turon_db.query(TuronMissionSubtask).filter(
+        TuronMissionSubtask.id == subtask_id,
+    ).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Subtask not found")
+    parent = turon_db.query(TuronMission).filter(
+        TuronMission.id == s.mission_id, TuronMission.deleted == False,
+    ).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent mission not found")
+    assert_can_mutate(identity, parent)
+    return s
 
 
 router = APIRouter(prefix="/mobile", tags=["Mobile - Events"])
@@ -608,6 +690,7 @@ def create_mission_comment(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_mission(identity, mission_id, db, gennis_db, turon_db)
     creator_name = _display_name(identity)
     if identity.system == "management":
         c = MissionComment(
@@ -673,6 +756,7 @@ def create_mission_attachment(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_mission(identity, mission_id, db, gennis_db, turon_db)
     creator_name = _display_name(identity)
     if identity.system == "management":
         a = MissionAttachment(
@@ -726,6 +810,7 @@ def create_mission_proof(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_mission(identity, mission_id, db, gennis_db, turon_db)
     creator_name = _display_name(identity)
     if identity.system == "management":
         p = MissionProof(
@@ -779,6 +864,7 @@ def create_subtask(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_mission(identity, mission_id, db, gennis_db, turon_db)
     creator_name = _display_name(identity)
     if identity.system == "management":
         s = MissionSubtask(
@@ -859,6 +945,7 @@ def update_subtask(
     payload = data.model_dump(exclude_unset=True)
     if not payload:
         raise HTTPException(status_code=400, detail="No fields to update")
+    _load_subtask(identity, subtask_id, db, gennis_db, turon_db)
 
     if identity.system == "management":
         s = db.query(MissionSubtask).filter(
@@ -932,6 +1019,7 @@ def delete_subtask(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_subtask(identity, subtask_id, db, gennis_db, turon_db)
     if identity.system == "management":
         s = db.query(MissionSubtask).filter(
             MissionSubtask.id == subtask_id, MissionSubtask.deleted == False,
@@ -970,6 +1058,7 @@ def create_subtask_comment(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_subtask(identity, subtask_id, db, gennis_db, turon_db)
     creator_name = _display_name(identity)
     if identity.system == "management":
         c = MissionSubtaskComment(
@@ -1025,6 +1114,7 @@ def create_subtask_attachment(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_subtask(identity, subtask_id, db, gennis_db, turon_db)
     creator_name = _display_name(identity)
     if identity.system == "management":
         a = MissionSubtaskAttachment(
@@ -1076,6 +1166,7 @@ def create_subtask_proof(
     gennis_db: Session = Depends(get_gennis_write_db),
     turon_db: Session = Depends(get_turon_write_db),
 ):
+    _load_subtask(identity, subtask_id, db, gennis_db, turon_db)
     creator_name = _display_name(identity)
     if identity.system == "management":
         p = MissionSubtaskProof(

@@ -341,6 +341,7 @@ class GennisMission(GennisBase):
     final_sc = Column(Integer, default=0)
     is_recurring = Column(Boolean, default=False)
     created_at = Column(DateTime)
+    deleted = Column(Boolean, default=False, nullable=False)
 
 
 # ── Mission sub-records ───────────────────────────────────────────────────────

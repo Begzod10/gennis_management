@@ -633,6 +633,7 @@ class TuronMission(TuronBase):
     repeat_every = Column(Integer, default=1)
     created_at = Column(Date)
     updated_at = Column(Date)
+    deleted = Column(Boolean, default=False, nullable=False)
 
 
 # ── Mission sub-records ───────────────────────────────────────────────────────
