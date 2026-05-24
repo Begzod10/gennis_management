@@ -6,10 +6,11 @@ from sqlalchemy.orm import Session
 import redis
 
 from app.database import get_db
-from app.models import User
+from app.models import MobileTelegramLink, User
 from app.config import settings
 from app.tasks import send_telegram_notification
 from app.routers.v1.auth import get_current_user
+from app.mobile.telegram import consume_mobile_link_code, resolve_mobile_link_code
 
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
 
@@ -135,19 +136,57 @@ async def telegram_webhook(
             return {"ok": True}
 
         code = parts[1].strip()
+
+        # 1. Legacy web link code (`tg_link:<code>` → bare management user id)
         user_id_str = _redis.get(f"tg_link:{code}")
-        if not user_id_str:
+        if user_id_str:
+            user = db.query(User).filter(User.id == int(user_id_str)).first()
+            if user:
+                user.telegram_id = chat_id
+                db.commit()
+                _redis.delete(f"tg_link:{code}")
+                full_name = f"{user.name} {user.surname}".strip() if user.surname else user.name
+                send_telegram_notification.delay(
+                    chat_id,
+                    f"✅ Hurmatli <b>{full_name}</b>, Telegram hisobingiz muvaffaqiyatli bog'landi!",
+                )
+            return {"ok": True}
+
+        # 2. Mobile link code (`mobile_tg_link:<code>` → "<system>:<id>")
+        resolved = resolve_mobile_link_code(code)
+        if not resolved:
             send_telegram_notification.delay(chat_id, "❌ Kod noto'g'ri yoki muddati o'tgan.")
             return {"ok": True}
 
-        user = db.query(User).filter(User.id == int(user_id_str)).first()
-        if not user:
-            return {"ok": True}
+        system, external_id = resolved
+        full_name = tg_full_name  # fallback when we can't resolve a name
 
-        user.telegram_id = chat_id
-        db.commit()
-        _redis.delete(f"tg_link:{code}")
-        full_name = f"{user.name} {user.surname}".strip() if user.surname else user.name
+        if system == "management":
+            user = db.query(User).filter(User.id == external_id).first()
+            if user:
+                user.telegram_id = chat_id
+                db.commit()
+                full_name = f"{user.name} {user.surname or ''}".strip() or full_name
+        else:
+            link = (
+                db.query(MobileTelegramLink)
+                .filter(
+                    MobileTelegramLink.system == system,
+                    MobileTelegramLink.external_id == external_id,
+                )
+                .first()
+            )
+            if link:
+                link.telegram_id = chat_id
+            else:
+                db.add(MobileTelegramLink(
+                    system=system,
+                    external_id=external_id,
+                    telegram_id=chat_id,
+                ))
+            db.commit()
+
+        consume_mobile_link_code(code)
         send_telegram_notification.delay(
             chat_id,
             f"✅ Hurmatli <b>{full_name}</b>, Telegram hisobingiz muvaffaqiyatli bog'landi!",

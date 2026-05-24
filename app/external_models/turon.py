@@ -215,6 +215,7 @@ class CustomUser(TuronBase):
     surname = Column(String(200))
     father_name = Column(String(200), nullable=True)
     phone = Column(String(200))
+    password = Column(String(200))
     branch_id = Column(BigInteger, ForeignKey("branch_branch.id"))
     language_id = Column(BigInteger, ForeignKey("language_language.id"), nullable=True)
     birth_date = Column(Date, nullable=True)

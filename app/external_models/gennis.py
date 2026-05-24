@@ -72,6 +72,7 @@ class Users(GennisBase):
     name = Column(String)
     surname = Column(String)
     username = Column(String)
+    password = Column(String)
     age = Column(Integer)
     location_id = Column(Integer, ForeignKey("locations.id"))
     education_language = Column(Integer, ForeignKey("educationlanguage.id"))

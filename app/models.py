@@ -531,3 +531,22 @@ class BranchLoan(Base):
     deleted = Column(Boolean, nullable=False, default=False)
 
     created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class MobileTelegramLink(Base):
+    """Bridge between a mobile user (any of the three systems) and a Telegram chat id.
+
+    Management users keep using `user.telegram_id` directly — this table only
+    holds links for Gennis / Turon users whose source-system user rows don't
+    carry a telegram_id column.
+    """
+    __tablename__ = "mobile_telegram_link"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    system = Column(String(20), nullable=False)
+    external_id = Column(BigInteger, nullable=False)
+    telegram_id = Column(BigInteger, nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("system", "external_id", name="uq_mobile_tg_user"),)

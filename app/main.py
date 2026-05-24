@@ -39,6 +39,13 @@ from .routers.v1.turon import (
     students as turon_students, teachers as turon_teachers,
     terms as turon_terms, timetable as turon_timetable,
 )
+from .mobile import (
+    auth as mobile_auth,
+    events as mobile_events,
+    me as mobile_me,
+    missions as mobile_missions,
+    telegram as mobile_telegram,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -184,6 +191,11 @@ app.include_router(turon_timetable.router, prefix=V1)
 app.include_router(turon_teachers.router, prefix=V1)
 app.include_router(turon_terms.router, prefix=V1)
 app.include_router(telegram_bot.router, prefix=V1)
+app.include_router(mobile_auth.router, prefix=V1)
+app.include_router(mobile_missions.router, prefix=V1)
+app.include_router(mobile_events.router, prefix=V1)
+app.include_router(mobile_telegram.router, prefix=V1)
+app.include_router(mobile_me.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)

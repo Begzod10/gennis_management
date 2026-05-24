@@ -4,7 +4,7 @@ from sqlalchemy import or_, func
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
-from app.models import Mission, MissionHistory, MissionSubtask, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job
+from app.models import Mission, MissionHistory, MissionSubtask, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job, MobileTelegramLink
 from app.services.openai_assistant import (
     ExecutorCandidate,
     MissionContext,
@@ -35,6 +35,82 @@ def _tg(db: Session, user_id: Optional[int], tpl_fn, *args):
     if u and u.telegram_id:
         full_name = f"{u.name} {u.surname}".strip() if u.surname else u.name
         send_telegram_notification.delay(u.telegram_id, tpl_fn(full_name, *args))
+
+
+def _tg_external(
+    db: Session,
+    system: str,
+    external_id: Optional[int],
+    full_name: Optional[str],
+    tpl_fn,
+    *args,
+):
+    """Fire-and-forget Telegram notification to a Gennis/Turon mobile user.
+
+    The recipient's telegram_id lives in the management-side `mobile_telegram_link`
+    bridge table — gennis/turon source rows do not carry a telegram_id column.
+    Returns silently when no link exists, so this can be called unconditionally.
+    """
+    if not external_id or system not in ("gennis", "turon"):
+        return
+    link = (
+        db.query(MobileTelegramLink)
+        .filter(
+            MobileTelegramLink.system == system,
+            MobileTelegramLink.external_id == external_id,
+        )
+        .first()
+    )
+    if not link:
+        return
+    display_name = (full_name or "").strip() or "User"
+    send_telegram_notification.delay(link.telegram_id, tpl_fn(display_name, *args))
+
+
+def _tg_mission_externals(
+    db: Session,
+    mission: Mission,
+    gennis_db: Optional[Session],
+    turon_db: Optional[Session],
+    executor_tpl,
+    reviewer_tpl,
+    *args,
+):
+    """Notify the gennis/turon executor and reviewer (if any) for the given mission.
+
+    Resolves each recipient's display name from the source-system DB so the
+    template renders with the correct greeting. Falls back to the cached
+    `gennis_*_name` / `turon_*_name` columns stored on the management mission
+    when a source-system session isn't available.
+    """
+    if mission.gennis_executor_id and executor_tpl is not None:
+        name = (
+            _get_gennis_user_name(mission.gennis_executor_id, gennis_db)
+            if gennis_db is not None
+            else None
+        ) or mission.gennis_executor_name
+        _tg_external(db, "gennis", mission.gennis_executor_id, name, executor_tpl, *args)
+    if mission.gennis_reviewer_id and reviewer_tpl is not None:
+        name = (
+            _get_gennis_user_name(mission.gennis_reviewer_id, gennis_db)
+            if gennis_db is not None
+            else None
+        ) or mission.gennis_reviewer_name
+        _tg_external(db, "gennis", mission.gennis_reviewer_id, name, reviewer_tpl, *args)
+    if mission.turon_executor_id and executor_tpl is not None:
+        name = (
+            _get_turon_user_name(mission.turon_executor_id, turon_db)
+            if turon_db is not None
+            else None
+        ) or mission.turon_executor_name
+        _tg_external(db, "turon", mission.turon_executor_id, name, executor_tpl, *args)
+    if mission.turon_reviewer_id and reviewer_tpl is not None:
+        name = (
+            _get_turon_user_name(mission.turon_reviewer_id, turon_db)
+            if turon_db is not None
+            else None
+        ) or mission.turon_reviewer_name
+        _tg_external(db, "turon", mission.turon_reviewer_id, name, reviewer_tpl, *args)
 
 
 # ── Role-based assignment rules ───────────────────────────────────────────────
@@ -565,6 +641,11 @@ def create_mission(
     for mission in created:
         _tg(db, mission.executor_id, tpl_assigned, mission.title, mission.deadline, creator_name)
         _tg(db, mission.reviewer_id, tpl_you_are_reviewer, mission.title, mission.deadline, creator_name)
+        _tg_mission_externals(
+            db, mission, gennis_db, turon_db,
+            tpl_assigned, tpl_you_are_reviewer,
+            mission.title, mission.deadline, creator_name,
+        )
 
     return created
 
@@ -673,6 +754,11 @@ def create_bulk_missions(
     for mission in created:
         _tg(db, mission.executor_id, tpl_assigned, mission.title, mission.deadline, creator_name)
         _tg(db, mission.reviewer_id, tpl_you_are_reviewer, mission.title, mission.deadline, creator_name)
+        _tg_mission_externals(
+            db, mission, gennis_db, turon_db,
+            tpl_assigned, tpl_you_are_reviewer,
+            mission.title, mission.deadline, creator_name,
+        )
 
     return created
 
@@ -1095,18 +1181,72 @@ def update_mission(
     changer = db.query(User).filter(User.id == changed_by_id).first() if changed_by_id else None
     changer_name = f"{changer.name} {changer.surname}".strip() if changer else "Tizim"
 
+    gennis_exec_changed = mission.gennis_executor_id != old_gennis_executor
+    gennis_rev_changed = mission.gennis_reviewer_id != old_gennis_reviewer
+    turon_exec_changed = mission.turon_executor_id != old_turon_executor
+    turon_rev_changed = mission.turon_reviewer_id != old_turon_reviewer
+    external_changed = (
+        gennis_exec_changed or gennis_rev_changed
+        or turon_exec_changed or turon_rev_changed
+    )
+
+    creator_for_assignment: Optional[User] = None
+
+    def _resolve_creator_name() -> str:
+        nonlocal creator_for_assignment
+        if creator_for_assignment is None:
+            creator_for_assignment = (
+                db.query(User).filter(User.id == mission.creator_id).first()
+            )
+        if creator_for_assignment:
+            return f"{creator_for_assignment.name} {creator_for_assignment.surname}".strip()
+        return "Tizim"
+
     if executor_changed:
-        creator = db.query(User).filter(User.id == mission.creator_id).first()
-        creator_name = f"{creator.name} {creator.surname}".strip() if creator else "Tizim"
+        creator_name = _resolve_creator_name()
         _tg(db, mission.executor_id, tpl_assigned, mission.title, mission.deadline, creator_name)
     if reviewer_changed:
-        creator = db.query(User).filter(User.id == mission.creator_id).first() if not executor_changed else creator
-        creator_name = f"{creator.name} {creator.surname}".strip() if creator else "Tizim"
+        creator_name = _resolve_creator_name()
         _tg(db, mission.reviewer_id, tpl_you_are_reviewer, mission.title, mission.deadline, creator_name)
-    if not executor_changed and not reviewer_changed:
-        # General update — notify current executor and reviewer
+
+    if gennis_exec_changed and mission.gennis_executor_id:
+        creator_name = _resolve_creator_name()
+        name = _get_gennis_user_name(mission.gennis_executor_id, gennis_db) or mission.gennis_executor_name
+        _tg_external(
+            db, "gennis", mission.gennis_executor_id, name,
+            tpl_assigned, mission.title, mission.deadline, creator_name,
+        )
+    if gennis_rev_changed and mission.gennis_reviewer_id:
+        creator_name = _resolve_creator_name()
+        name = _get_gennis_user_name(mission.gennis_reviewer_id, gennis_db) or mission.gennis_reviewer_name
+        _tg_external(
+            db, "gennis", mission.gennis_reviewer_id, name,
+            tpl_you_are_reviewer, mission.title, mission.deadline, creator_name,
+        )
+    if turon_exec_changed and mission.turon_executor_id:
+        creator_name = _resolve_creator_name()
+        name = _get_turon_user_name(mission.turon_executor_id, turon_db) or mission.turon_executor_name
+        _tg_external(
+            db, "turon", mission.turon_executor_id, name,
+            tpl_assigned, mission.title, mission.deadline, creator_name,
+        )
+    if turon_rev_changed and mission.turon_reviewer_id:
+        creator_name = _resolve_creator_name()
+        name = _get_turon_user_name(mission.turon_reviewer_id, turon_db) or mission.turon_reviewer_name
+        _tg_external(
+            db, "turon", mission.turon_reviewer_id, name,
+            tpl_you_are_reviewer, mission.title, mission.deadline, creator_name,
+        )
+
+    if not executor_changed and not reviewer_changed and not external_changed:
+        # General update — notify current executor and reviewer (both internal and external)
         _tg(db, mission.executor_id, tpl_updated, mission.title, changer_name)
         _tg(db, mission.reviewer_id, tpl_updated, mission.title, changer_name)
+        _tg_mission_externals(
+            db, mission, gennis_db, turon_db,
+            tpl_updated, tpl_updated,
+            mission.title, changer_name,
+        )
 
     return mission
 
@@ -1142,6 +1282,11 @@ def delete_mission(
     db.commit()
     _tg(db, mission.executor_id, tpl_deleted, mission.title)
     _tg(db, mission.reviewer_id, tpl_deleted, mission.title)
+    _tg_mission_externals(
+        db, mission, gennis_db, turon_db,
+        tpl_deleted, tpl_deleted,
+        mission.title,
+    )
 
 
 @router.patch("/{mission_id}/status", response_model=MissionOut)
@@ -1186,6 +1331,11 @@ def change_status(
 
     _tg(db, mission.executor_id, tpl_status_changed, mission.title, mission.status)
     _tg(db, mission.reviewer_id, tpl_status_changed, mission.title, mission.status)
+    _tg_mission_externals(
+        db, mission, gennis_db, turon_db,
+        tpl_status_changed, tpl_status_changed,
+        mission.title, mission.status,
+    )
 
     return mission
 
@@ -1227,8 +1377,18 @@ def approve_mission(
     if data.approval_status.value == "approved":
         _tg(db, mission.executor_id, tpl_approved, mission.title, approver_name)
         _tg(db, mission.creator_id, tpl_approved, mission.title, approver_name)
+        _tg_mission_externals(
+            db, mission, gennis_db, turon_db,
+            tpl_approved, None,
+            mission.title, approver_name,
+        )
     else:
         _tg(db, mission.executor_id, tpl_declined, mission.title, approver_name)
+        _tg_mission_externals(
+            db, mission, gennis_db, turon_db,
+            tpl_declined, None,
+            mission.title, approver_name,
+        )
 
     return mission
 
@@ -1303,6 +1463,13 @@ def redirect_mission(
     _tg(db, new_executor_id, tpl_redirected_new, mission.title, redirected_by_name)
     _tg(db, mission.creator_id, tpl_redirected_creator, mission.title, old_executor_name, new_executor_name)
     _tg(db, mission.reviewer_id, tpl_redirected_creator, mission.title, old_executor_name, new_executor_name)
+    # External executor/reviewer (gennis/turon) didn't change here — redirect only
+    # rewires the management executor. Inform them as bystanders.
+    _tg_mission_externals(
+        db, mission, gennis_db, turon_db,
+        tpl_redirected_creator, tpl_redirected_creator,
+        mission.title, old_executor_name, new_executor_name,
+    )
 
     return mission
 
@@ -1346,6 +1513,13 @@ def complete_mission(
     executor_name = _resolve_user_name(db, mission.executor_id) or ""
     _tg(db, mission.reviewer_id, tpl_completed, mission.title, executor_name, mission.finish_date)
     _tg(db, mission.creator_id, tpl_completed, mission.title, executor_name, mission.finish_date)
+    # Notify external reviewers only — the external executor doesn't need a
+    # "you completed it" ping since they did the completing.
+    _tg_mission_externals(
+        db, mission, gennis_db, turon_db,
+        None, tpl_completed,
+        mission.title, executor_name, mission.finish_date,
+    )
 
     return mission
 
