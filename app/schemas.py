@@ -664,6 +664,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    manager_id: Optional[int] = None
 
 
 class ProjectMemberAdd(BaseModel):

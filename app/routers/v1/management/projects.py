@@ -67,7 +67,15 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(project_id: int, data: ProjectUpdate, db: Session = Depends(get_db)):
     project = _get_project_or_404(db, project_id)
-    for field, value in data.model_dump(exclude_none=True).items():
+    payload = data.model_dump(exclude_none=True)
+    new_manager_id = payload.pop("manager_id", None)
+    if new_manager_id is not None and new_manager_id != project.manager_id:
+        manager = db.query(User).filter(User.id == new_manager_id, User.deleted == False).first()
+        if not manager:
+            raise HTTPException(status_code=404, detail="Manager not found")
+        manager.role = "manager"
+        project.manager_id = new_manager_id
+    for field, value in payload.items():
         setattr(project, field, value)
     db.commit()
     db.refresh(project)
