@@ -23,7 +23,7 @@ class MobileIdentity(BaseModel):
 
 class MobileLoginRequest(BaseModel):
     system: SystemLiteral
-    username: str = Field(..., description="email (management), username (Gennis), phone (Turon)")
+    username: str = Field(..., description="email (management), username (Gennis), username or phone (Turon)")
     password: str
 
 

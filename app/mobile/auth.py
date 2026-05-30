@@ -68,14 +68,12 @@ def _verify_werkzeug(plain: str, hashed: str) -> bool:
         digest = hashlib.pbkdf2_hmac(algo, plain.encode("utf-8"), salt.encode("utf-8"), iters)
         return hmac.compare_digest(digest.hex(), expected)
 
-    # plain algo like "sha256", "sha1", "md5"
+    # Werkzeug's legacy non-pbkdf2 format uses HMAC(salt, password, algo).
     try:
-        h = hashlib.new(method_part)
+        digest = hmac.new(salt.encode("utf-8"), plain.encode("utf-8"), method_part).hexdigest()
     except (ValueError, LookupError):
         return False
-    h.update(salt.encode("utf-8"))
-    h.update(plain.encode("utf-8"))
-    return hmac.compare_digest(h.hexdigest(), expected)
+    return hmac.compare_digest(digest, expected)
 
 
 def _verify_external(plain: str, hashed: Optional[str]) -> bool:
@@ -125,11 +123,14 @@ def _lookup_gennis(username: str, gennis_db: Session) -> Tuple[Optional[object],
 
 
 def _lookup_turon(username: str, turon_db: Session) -> Tuple[Optional[object], Optional[str]]:
-    """Return (user_row, stored_hash) for the Turon DB by phone."""
+    """Return (user_row, stored_hash) for the Turon DB by username or phone.
+
+    Most staff log in with a Django username; legacy clients used phone.
+    """
     user = (
         turon_db.query(TuronUser)
         .filter(
-            TuronUser.phone == username,
+            or_(TuronUser.username == username, TuronUser.phone == username),
             or_(TuronUser.is_active == True, TuronUser.is_active.is_(None)),
         )
         .order_by(TuronUser.id.desc())
