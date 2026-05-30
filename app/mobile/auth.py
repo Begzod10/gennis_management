@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from passlib.context import CryptContext
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
@@ -103,18 +104,23 @@ def _lookup_management(username: str, db: Session) -> Tuple[Optional[object], Op
 
 
 def _lookup_gennis(username: str, gennis_db: Session) -> Tuple[Optional[object], Optional[str]]:
-    """Return (user_row, stored_hash) for the Gennis DB by username."""
+    """Return (user_row, stored_hash) for the Gennis DB by username.
+
+    NULL `deleted` is treated as not-deleted (most rows in the legacy table
+    were never backfilled to `false`). Newest id wins when the same username
+    exists multiple times.
+    """
     user = (
         gennis_db.query(GennisUsers)
-        .filter(GennisUsers.username == username, GennisUsers.deleted == False)
+        .filter(
+            GennisUsers.username == username,
+            or_(GennisUsers.deleted == False, GennisUsers.deleted.is_(None)),
+        )
+        .order_by(GennisUsers.id.desc())
         .first()
     )
     if not user:
         return None, None
-    # `Users` model in external_models doesn't currently map a password column.
-    # We pull it lazily via raw attribute access so we don't have to alter the
-    # schema mapping just for this. If `password` is not mapped, this returns
-    # None and verification will fail cleanly.
     return user, getattr(user, "password", None)
 
 
@@ -122,7 +128,11 @@ def _lookup_turon(username: str, turon_db: Session) -> Tuple[Optional[object], O
     """Return (user_row, stored_hash) for the Turon DB by phone."""
     user = (
         turon_db.query(TuronUser)
-        .filter(TuronUser.phone == username, TuronUser.is_active == True)
+        .filter(
+            TuronUser.phone == username,
+            or_(TuronUser.is_active == True, TuronUser.is_active.is_(None)),
+        )
+        .order_by(TuronUser.id.desc())
         .first()
     )
     if not user:
@@ -266,7 +276,10 @@ def mobile_refresh(
     elif system == "gennis":
         user = (
             gennis_db.query(GennisUsers)
-            .filter(GennisUsers.id == external_id, GennisUsers.deleted == False)
+            .filter(
+                GennisUsers.id == external_id,
+                or_(GennisUsers.deleted == False, GennisUsers.deleted.is_(None)),
+            )
             .first()
         )
         if user:
@@ -275,7 +288,10 @@ def mobile_refresh(
     else:
         user = (
             turon_db.query(TuronUser)
-            .filter(TuronUser.id == external_id, TuronUser.is_active == True)
+            .filter(
+                TuronUser.id == external_id,
+                or_(TuronUser.is_active == True, TuronUser.is_active.is_(None)),
+            )
             .first()
         )
         if user:
