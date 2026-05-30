@@ -893,8 +893,6 @@ def create_subtask(
         s = _G(
             mission_id=mission_id,
             title=data.title,
-            description=data.description,
-            deadline=data.deadline,
             order=data.order or 0,
             creator_name=creator_name,
             created_at=datetime.utcnow(),
@@ -904,9 +902,9 @@ def create_subtask(
         gennis_db.refresh(s)
         return MobileSubtaskOut(
             id=s.id, source="gennis", mission_id=s.mission_id,
-            title=s.title, description=s.description,
-            status=s.status, is_done=bool(s.is_done), order=s.order or 0,
-            deadline=s.deadline, finish_date=s.finish_date,
+            title=s.title, description=None,
+            status=None, is_done=bool(s.is_done), order=s.order or 0,
+            deadline=None, finish_date=None,
             creator_name=s.creator_name, executor_name=None,
             created_at=s.created_at,
         )
@@ -914,22 +912,19 @@ def create_subtask(
     s = _T(
         mission_id=mission_id,
         title=data.title,
-        description=data.description,
-        deadline=data.deadline,
         order=data.order or 0,
         creator_name=creator_name,
-        created_at=datetime.utcnow(),
     )
     turon_db.add(s)
     turon_db.commit()
     turon_db.refresh(s)
     return MobileSubtaskOut(
         id=s.id, source="turon", mission_id=s.mission_id,
-        title=s.title, description=s.description,
-        status=s.status, is_done=bool(s.is_done), order=s.order or 0,
-        deadline=s.deadline, finish_date=s.finish_date,
+        title=s.title, description=None,
+        status=None, is_done=bool(s.is_done), order=s.order or 0,
+        deadline=None, finish_date=None,
         creator_name=s.creator_name, executor_name=None,
-        created_at=s.created_at,
+        created_at=None,
     )
 
 
@@ -969,23 +964,25 @@ def update_subtask(
             created_at=s.created_at,
         )
 
+    # Fields not present in the external schemas (Flask Gennis / Django Turon).
+    _UNSUPPORTED_EXT_FIELDS = {"description", "status", "deadline", "finish_date", "executor_id"}
+
     if identity.system == "gennis":
         from app.external_models.gennis import GennisMissionSubtask as _G
         s = gennis_db.query(_G).filter(_G.id == subtask_id).first()
         if not s:
             raise HTTPException(status_code=404, detail="Subtask not found")
-        payload.pop("executor_id", None)  # gennis subtask schema has no executor_id
+        for field in _UNSUPPORTED_EXT_FIELDS:
+            payload.pop(field, None)
         for field, value in payload.items():
             setattr(s, field, value)
-        if payload.get("is_done") and s.finish_date is None:
-            s.finish_date = _date_t.today()
         gennis_db.commit()
         gennis_db.refresh(s)
         return MobileSubtaskOut(
             id=s.id, source="gennis", mission_id=s.mission_id,
-            title=s.title, description=s.description,
-            status=s.status, is_done=bool(s.is_done), order=s.order or 0,
-            deadline=s.deadline, finish_date=s.finish_date,
+            title=s.title, description=None,
+            status=None, is_done=bool(s.is_done), order=s.order or 0,
+            deadline=None, finish_date=None,
             creator_name=s.creator_name, executor_name=None,
             created_at=s.created_at,
         )
@@ -994,20 +991,19 @@ def update_subtask(
     s = turon_db.query(_T).filter(_T.id == subtask_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Subtask not found")
-    payload.pop("executor_id", None)
+    for field in _UNSUPPORTED_EXT_FIELDS:
+        payload.pop(field, None)
     for field, value in payload.items():
         setattr(s, field, value)
-    if payload.get("is_done") and s.finish_date is None:
-        s.finish_date = _date_t.today()
     turon_db.commit()
     turon_db.refresh(s)
     return MobileSubtaskOut(
         id=s.id, source="turon", mission_id=s.mission_id,
-        title=s.title, description=s.description,
-        status=s.status, is_done=bool(s.is_done), order=s.order or 0,
-        deadline=s.deadline, finish_date=s.finish_date,
+        title=s.title, description=None,
+        status=None, is_done=bool(s.is_done), order=s.order or 0,
+        deadline=None, finish_date=None,
         creator_name=s.creator_name, executor_name=None,
-        created_at=s.created_at,
+        created_at=None,
     )
 
 

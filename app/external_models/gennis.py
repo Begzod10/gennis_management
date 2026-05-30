@@ -352,14 +352,15 @@ class GennisMissionSubtask(GennisBase):
     management_id = Column(BigInteger, nullable=True, unique=True)
     mission_id = Column(Integer, ForeignKey("missions.id"))
     title = Column(String(255))
-    description = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False)
     order = Column(Integer, default=0)
-    status = Column(String(30), nullable=True)
-    deadline = Column(Date, nullable=True)
-    finish_date = Column(Date, nullable=True)
     created_at = Column(DateTime, nullable=True)
     creator_name = Column(String(255), nullable=True)
+    # Not present in the source Flask schema — exposed as None for shape parity.
+    description = None
+    status = None
+    deadline = None
+    finish_date = None
 
 
 class GennisMissionSubtaskComment(GennisBase):
