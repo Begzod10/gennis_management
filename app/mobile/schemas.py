@@ -27,6 +27,10 @@ class MobileLoginRequest(BaseModel):
     password: str
 
 
+class MobileGoogleAuthRequest(BaseModel):
+    token: str = Field(..., description="Google ID token from the mobile Google Sign-In SDK")
+
+
 class MobileUserOut(BaseModel):
     id: int
     system: SystemLiteral

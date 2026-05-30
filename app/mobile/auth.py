@@ -1,6 +1,7 @@
 import hashlib
 import hmac
-from datetime import timedelta
+import secrets
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,6 +14,8 @@ from app.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    get_password_hash,
+    verify_google_token,
     verify_password,
     verify_refresh_token,
 )
@@ -21,6 +24,7 @@ from app.external_models.gennis import Users as GennisUsers
 from app.external_models.turon import CustomUser as TuronUser
 from app.mobile.schemas import (
     MobileAuthResponse,
+    MobileGoogleAuthRequest,
     MobileLoginRequest,
     MobileRefreshRequest,
     MobileUserOut,
@@ -228,6 +232,111 @@ def mobile_login(
             name=name,
             surname=surname,
             role=role,
+        ),
+    )
+
+
+@router.post("/google", response_model=MobileAuthResponse)
+def mobile_google_auth(
+    payload: MobileGoogleAuthRequest,
+    db: Session = Depends(get_db),
+):
+    """Sign in (or auto-register) a management user from a Google ID token.
+
+    Mirrors the web `/auth/google` flow but returns the mobile token shape.
+    Gennis and Turon users are not supported here — Google identities only
+    map to the management system, which is the only one keyed by email.
+    """
+    try:
+        info = verify_google_token(payload.token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
+
+    email = (info.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email not provided by Google",
+        )
+
+    google_id = info.get("sub")
+    picture = info.get("picture")
+    email_verified = info.get("email_verified", "false") == "true"
+
+    given_name = (info.get("given_name") or "").strip()
+    family_name = (info.get("family_name") or "").strip()
+    full_name = (info.get("name") or "").strip()
+    if not given_name and not family_name and full_name:
+        parts = full_name.split(None, 1)
+        given_name = parts[0]
+        family_name = parts[1] if len(parts) > 1 else ""
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+    now = datetime.utcnow()
+    if user:
+        if not (user.name or "").strip() and given_name:
+            user.name = given_name
+        if not (user.surname or "").strip() and family_name:
+            user.surname = family_name
+        user.google_id = google_id
+        user.profile_photo_url = picture
+        user.is_verified = email_verified
+        user.last_login = now
+        user.updated_at = now
+        if user.auth_provider == "email":
+            user.auth_provider = "google"
+    else:
+        user = models.User(
+            name=given_name or "User",
+            surname=family_name,
+            email=email,
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            auth_provider="google",
+            google_id=google_id,
+            profile_photo_url=picture,
+            is_verified=email_verified,
+            timezone="Asia/Tashkent",
+            is_active=True,
+            last_login=now,
+        )
+        db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled",
+        )
+
+    token_claims = {
+        "sub": f"management:{user.id}",
+        "system": "management",
+        "external_id": user.id,
+        "management_user_id": user.id,
+        "name": f"{user.name or ''} {user.surname or ''}".strip() or None,
+        "role": user.role,
+    }
+    access_token = create_access_token(
+        data=token_claims,
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    refresh_token = create_refresh_token(data=token_claims)
+
+    return MobileAuthResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=MobileUserOut(
+            id=user.id,
+            system="management",
+            name=user.name,
+            surname=user.surname,
+            role=user.role,
         ),
     )
 

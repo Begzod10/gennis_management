@@ -71,6 +71,46 @@ No auth header required.
 
 ---
 
+### POST `/api/v1/mobile/auth/google`
+
+No auth header required. **Management users only** — Google identity maps to email, which is the management system's login key.
+
+Mobile flow:
+1. Mobile app uses the native Google Sign-In SDK and gets an **ID token**.
+2. Mobile POSTs that token here.
+3. We verify the token with Google, find or auto-create the matching management user, and return the same JWT shape as `/auth/login`.
+
+**Request**
+```json
+{ "token": "eyJhbGciOiJSUzI1NiIs...<google id token>..." }
+```
+
+**Response 200** — identical shape to `/auth/login`:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "user": {
+    "id": 12,
+    "system": "management",
+    "name": "Alice",
+    "surname": "Doe",
+    "role": "director"
+  }
+}
+```
+
+Auto-registration: if no management user has this email, one is created with `auth_provider="google"` and a random unusable password. On subsequent logins, the existing user is found by email; name/surname are filled from Google only if blank (manual edits are preserved).
+
+**Errors:**
+- `400` Google did not return an email
+- `401` Google rejected the token (invalid / expired)
+- `403` account exists but is disabled
+
+---
+
 ### POST `/api/v1/mobile/auth/refresh`
 
 No auth header required (the refresh token IS the credential).
