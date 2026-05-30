@@ -67,7 +67,12 @@ def verify_refresh_token(token: str) -> dict:
 # ── Google token --------------------------------------------------------------
 
 def verify_google_token(id_token: str) -> dict:
-    """Verify a Google ID token by calling Google's tokeninfo endpoint."""
+    """Verify a Google ID token by calling Google's tokeninfo endpoint.
+
+    Accepts tokens issued for any of our configured OAuth clients (web +
+    each mobile platform). Tokens whose `aud` claim is outside that set are
+    rejected, even if otherwise valid.
+    """
     with httpx.Client(trust_env=False, timeout=10.0) as client:
         resp = client.get(
             "https://oauth2.googleapis.com/tokeninfo",
@@ -79,8 +84,11 @@ def verify_google_token(id_token: str) -> dict:
 
     info = resp.json()
 
-    # Validate audience matches our client ID
-    if settings.GOOGLE_CLIENT_ID and info.get("aud") != settings.GOOGLE_CLIENT_ID:
+    allowed = {cid.strip() for cid in (
+        settings.GOOGLE_CLIENT_ID,
+        *settings.GOOGLE_ALLOWED_CLIENT_IDS.split(","),
+    ) if cid and cid.strip()}
+    if allowed and info.get("aud") not in allowed:
         raise ValueError("Token audience mismatch")
 
     return info
