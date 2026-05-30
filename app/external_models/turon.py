@@ -213,6 +213,7 @@ class CustomUser(TuronBase):
     id = Column(BigInteger, primary_key=True)
     name = Column(String(200))
     surname = Column(String(200))
+    username = Column(String(200), nullable=True)
     father_name = Column(String(200), nullable=True)
     phone = Column(String(200))
     password = Column(String(200))
