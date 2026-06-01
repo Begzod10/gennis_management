@@ -12,7 +12,8 @@ from app.external_models.turon import TuronApiLog, TuronCustomUser
 from app.external_models.gennis import GennisApiLog, Users as GennisUsers
 from app.models import User
 from app.schemas_stats import (
-    ByPaymentType, GennisOverheadSummary, TuronOverheadSummary,
+    ByPaymentType, BranchTransactionTotals,
+    GennisOverheadSummary, TuronOverheadSummary,
     GennisSummary, TuronSummary, OverviewOut,
     ApiUsageItem, ApiUsageByUserItem,
     TuronApiUsageItem, TuronApiUsageByUserItem,
@@ -722,6 +723,45 @@ def gennis_capitals(
     return {"total": grand_total, "by_payment_type": by_type}
 
 
+@router.get("/gennis/branch-transactions", response_model=BranchTransactionTotals)
+def gennis_branch_transactions(
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None, ge=2000),
+    location_id: Optional[int] = Query(None),
+    db: Session = Depends(get_gennis_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+):
+    """Branch transactions in Gennis — split by direction (give/receive) with per-payment-type breakdown."""
+    base = (
+        db.query(
+            G.GennisBranchTransaction.is_give.label("is_give"),
+            G.PaymentTypes.name.label("payment_type"),
+            func.coalesce(func.sum(G.GennisBranchTransaction.amount), 0).label("total"),
+        )
+        .join(G.PaymentTypes, G.PaymentTypes.id == G.GennisBranchTransaction.payment_type_id)
+        .filter(G.GennisBranchTransaction.deleted == False)
+    )
+    base = _month_year_filter_gennis(base, G.GennisBranchTransaction, month, year, from_date=from_date, to_date=to_date)
+    if location_id:
+        base = base.filter(G.GennisBranchTransaction.location_id == location_id)
+    rows = base.group_by(G.GennisBranchTransaction.is_give, G.PaymentTypes.name).all()
+
+    give_by_type: List[dict] = []
+    receive_by_type: List[dict] = []
+    for r in rows:
+        bucket = give_by_type if r.is_give else receive_by_type
+        bucket.append({"payment_type": r.payment_type, "total": r.total})
+
+    give_total = sum(item["total"] for item in give_by_type)
+    receive_total = sum(item["total"] for item in receive_by_type)
+    return {
+        "give": {"total": give_total, "by_payment_type": give_by_type},
+        "receive": {"total": receive_total, "by_payment_type": receive_by_type},
+        "net": receive_total - give_total,
+    }
+
+
 @router.get("/gennis/summary", response_model=GennisSummary)
 def gennis_summary(
     month: Optional[int] = Query(None, ge=1, le=12),
@@ -732,17 +772,24 @@ def gennis_summary(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
 ):
-    """Full Gennis summary: payments, teacher salaries, staff salaries, overheads, capitals, dividends, remaining."""
+    """Full Gennis summary: payments, teacher salaries, staff salaries, overheads, capitals, branch transactions, dividends, remaining."""
     payments = gennis_payments(month, year, location_id, db, from_date=from_date, to_date=to_date)
     teacher_salaries = gennis_teacher_salaries(month, year, location_id, db, from_date=from_date, to_date=to_date)
     staff_salaries = gennis_staff_salaries(month, year, location_id, db, from_date=from_date, to_date=to_date)
     overheads = gennis_overheads(month, year, location_id, db, from_date=from_date, to_date=to_date)
     capitals = gennis_capitals(month, year, location_id, db, from_date=from_date, to_date=to_date)
+    branch_transactions = gennis_branch_transactions(month, year, location_id, db, from_date=from_date, to_date=to_date)
     dividends = _get_total(local_db, Dividend, "gennis", month, year, location_id=location_id, from_date=from_date, to_date=to_date)
     investments = _get_total(local_db, Investment, "gennis", month, year, location_id=location_id, from_date=from_date, to_date=to_date)
 
-    total_expenses = teacher_salaries["total"] + staff_salaries["total"] + overheads["total"] + capitals["total"] + dividends
-    remaining = payments["total"] + investments - total_expenses
+    total_expenses = (
+        teacher_salaries["total"] + staff_salaries["total"] + overheads["total"]
+        + capitals["total"] + dividends + branch_transactions["give"]["total"]
+    )
+    remaining = (
+        payments["total"] + investments + branch_transactions["receive"]["total"]
+        - total_expenses
+    )
 
     return {
         "payments": payments,
@@ -750,6 +797,7 @@ def gennis_summary(
         "staff_salaries": staff_salaries,
         "overheads": overheads,
         "capitals": capitals,
+        "branch_transactions": branch_transactions,
         "dividends": dividends,
         "investments": investments,
         "total_expenses": total_expenses,
@@ -923,6 +971,45 @@ def turon_capitals(
     return {"total": grand_total, "by_payment_type": by_type}
 
 
+@router.get("/turon/branch-transactions", response_model=BranchTransactionTotals)
+def turon_branch_transactions(
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None, ge=2000),
+    branch_id: Optional[int] = Query(None),
+    db: Session = Depends(get_turon_db),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+):
+    """Branch transactions in Turon — split by direction (give/receive) with per-payment-type breakdown."""
+    base = (
+        db.query(
+            T.TuronBranchTransaction.is_give.label("is_give"),
+            T.PaymentTypes.name.label("payment_type"),
+            func.coalesce(func.sum(T.TuronBranchTransaction.amount), 0).label("total"),
+        )
+        .join(T.PaymentTypes, T.PaymentTypes.id == T.TuronBranchTransaction.payment_type_id)
+        .filter(T.TuronBranchTransaction.deleted == False)
+    )
+    base = _month_year_filter_turon(base, T.TuronBranchTransaction.date, month, year, from_date=from_date, to_date=to_date)
+    if branch_id:
+        base = base.filter(T.TuronBranchTransaction.branch_id == branch_id)
+    rows = base.group_by(T.TuronBranchTransaction.is_give, T.PaymentTypes.name).all()
+
+    give_by_type: List[dict] = []
+    receive_by_type: List[dict] = []
+    for r in rows:
+        bucket = give_by_type if r.is_give else receive_by_type
+        bucket.append({"payment_type": r.payment_type, "total": r.total})
+
+    give_total = sum(item["total"] for item in give_by_type)
+    receive_total = sum(item["total"] for item in receive_by_type)
+    return {
+        "give": {"total": give_total, "by_payment_type": give_by_type},
+        "receive": {"total": receive_total, "by_payment_type": receive_by_type},
+        "net": receive_total - give_total,
+    }
+
+
 @router.get("/turon/summary", response_model=TuronSummary)
 def turon_summary(
     month: Optional[int] = Query(None, ge=1, le=12),
@@ -933,17 +1020,24 @@ def turon_summary(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
 ):
-    """Full Turon summary: payments, teacher salaries, staff salaries, overheads, capitals, dividends, remaining."""
+    """Full Turon summary: payments, teacher salaries, staff salaries, overheads, capitals, branch transactions, dividends, remaining."""
     payments = turon_payments(month, year, branch_id, db, from_date=from_date, to_date=to_date)
     teacher_salaries = turon_teacher_salaries(month, year, branch_id, db, from_date=from_date, to_date=to_date)
     staff_salaries = turon_staff_salaries(month, year, branch_id, db, from_date=from_date, to_date=to_date)
     overheads = turon_overheads(month, year, branch_id, db, from_date=from_date, to_date=to_date)
     capitals = turon_capitals(month, year, branch_id, db, from_date=from_date, to_date=to_date)
+    branch_transactions = turon_branch_transactions(month, year, branch_id, db, from_date=from_date, to_date=to_date)
     dividends = _get_total(local_db, Dividend, "turon", month, year, branch_id=branch_id, from_date=from_date, to_date=to_date)
     investments = _get_total(local_db, Investment, "turon", month, year, branch_id=branch_id, from_date=from_date, to_date=to_date)
 
-    total_expenses = teacher_salaries["total"] + staff_salaries["total"] + overheads["total"] + capitals["total"] + dividends
-    remaining = payments["total"] + investments - total_expenses
+    total_expenses = (
+        teacher_salaries["total"] + staff_salaries["total"] + overheads["total"]
+        + capitals["total"] + dividends + branch_transactions["give"]["total"]
+    )
+    remaining = (
+        payments["total"] + investments + branch_transactions["receive"]["total"]
+        - total_expenses
+    )
 
     return {
         "payments": payments,
@@ -951,6 +1045,7 @@ def turon_summary(
         "staff_salaries": staff_salaries,
         "overheads": overheads,
         "capitals": capitals,
+        "branch_transactions": branch_transactions,
         "dividends": dividends,
         "investments": investments,
         "total_expenses": total_expenses,
@@ -981,11 +1076,17 @@ def overview(
     total_staff_salaries = g["staff_salaries"]["total"] + t["staff_salaries"]["total"]
     total_overheads = g["overheads"]["total"] + t["overheads"]["total"]
     total_capitals = g["capitals"]["total"] + t["capitals"]["total"]
+    total_branch_tx_give = g["branch_transactions"]["give"]["total"] + t["branch_transactions"]["give"]["total"]
+    total_branch_tx_receive = g["branch_transactions"]["receive"]["total"] + t["branch_transactions"]["receive"]["total"]
+    total_branch_tx_net = total_branch_tx_receive - total_branch_tx_give
     total_dividends = g["dividends"] + t["dividends"]
     total_investments = g["investments"] + t["investments"]
     # investments are minus for management (money sent out), dividends are plus (money received)
-    total_expenses = total_teacher_salaries + total_staff_salaries + total_overheads + total_capitals + total_investments
-    remaining = total_payments + total_dividends - total_expenses
+    total_expenses = (
+        total_teacher_salaries + total_staff_salaries + total_overheads
+        + total_capitals + total_investments + total_branch_tx_give
+    )
+    remaining = total_payments + total_dividends + total_branch_tx_receive - total_expenses
 
     return {
         "period": {"month": month, "year": year, "from_date": from_date, "to_date": to_date},
@@ -997,6 +1098,9 @@ def overview(
             "total_staff_salaries": total_staff_salaries,
             "total_overheads": total_overheads,
             "total_capitals": total_capitals,
+            "total_branch_tx_give": total_branch_tx_give,
+            "total_branch_tx_receive": total_branch_tx_receive,
+            "total_branch_tx_net": total_branch_tx_net,
             "total_dividends": total_dividends,
             "total_investments": total_investments,
             "total_expenses": total_expenses,

@@ -80,6 +80,17 @@ class ByPaymentType(BaseModel):
     by_payment_type: List[PaymentTypeAmount]
 
 
+class BranchTransactionTotals(BaseModel):
+    """Branch transactions split by direction.
+
+    `give` = money out of the branch (expense), `receive` = money in (revenue).
+    `net = receive - give`.
+    """
+    give: ByPaymentType
+    receive: ByPaymentType
+    net: int
+
+
 class YearMonths(BaseModel):
     year: int
     months: List[int]
@@ -117,6 +128,7 @@ class GennisSummary(BaseModel):
     staff_salaries: ByPaymentType
     overheads: GennisOverheadSummary
     capitals: ByPaymentType
+    branch_transactions: BranchTransactionTotals
     dividends: int
     investments: int
     total_expenses: int
@@ -129,6 +141,7 @@ class TuronSummary(BaseModel):
     staff_salaries: ByPaymentType
     overheads: TuronOverheadSummary
     capitals: ByPaymentType
+    branch_transactions: BranchTransactionTotals
     dividends: int
     investments: int
     total_expenses: int
@@ -141,6 +154,9 @@ class CombinedStats(BaseModel):
     total_staff_salaries: int
     total_overheads: int
     total_capitals: int
+    total_branch_tx_give: int
+    total_branch_tx_receive: int
+    total_branch_tx_net: int
     total_dividends: int
     total_investments: int
     total_expenses: int
