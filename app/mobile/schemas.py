@@ -194,6 +194,32 @@ class MobileExecutorOut(BaseModel):
     role: Optional[str] = None
 
 
+# ── Project / section pickers (management only) ──────────────────────────────
+
+ProjectRole = Literal["manager", "member"]
+SectionRole = Literal["leader", "member"]
+
+
+class MobileProjectOut(BaseModel):
+    """A project the caller manages or belongs to.
+
+    `role` tells the mobile client whether the caller can assign work in this
+    project (manager) or merely participates (member). The mobile picker only
+    needs the `id` to pass back as `project_id` to `eligible-executors`.
+    """
+    id: int
+    name: str
+    description: Optional[str] = None
+    role: ProjectRole
+
+
+class MobileSectionOut(BaseModel):
+    """A section the caller leads or belongs to."""
+    id: int
+    name: str
+    role: SectionRole
+
+
 # ── Mission history & related "events" ───────────────────────────────────────
 
 class MobileHistoryEntry(BaseModel):

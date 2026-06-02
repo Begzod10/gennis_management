@@ -44,6 +44,7 @@ from .mobile import (
     events as mobile_events,
     me as mobile_me,
     missions as mobile_missions,
+    scopes as mobile_scopes,
     telegram as mobile_telegram,
     users as mobile_users,
 )
@@ -198,6 +199,7 @@ app.include_router(mobile_events.router, prefix=V1)
 app.include_router(mobile_telegram.router, prefix=V1)
 app.include_router(mobile_me.router, prefix=V1)
 app.include_router(mobile_users.router, prefix=V1)
+app.include_router(mobile_scopes.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)
