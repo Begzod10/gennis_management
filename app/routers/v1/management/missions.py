@@ -252,7 +252,6 @@ def _sync_history_to_turon(entry: MissionHistory, mission: Mission, db: Session,
         gennis_reviewer_id=entry.gennis_reviewer_id,
         gennis_reviewer_name=entry.gennis_reviewer_name,
         changed_by_name=_resolve_user_name(db, entry.changed_by_id),
-        status=entry.status,
         note=entry.note,
         created_at=entry.created_at,
     )

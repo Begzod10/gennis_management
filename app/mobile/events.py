@@ -230,7 +230,7 @@ def mission_history(
     return [
         MobileHistoryEntry(
             id=h.id, source="turon",
-            status=h.status, note=h.note,
+            status=None, note=h.note,
             changed_by_name=h.changed_by_name,
             executor_name=_turon_name(turon_db, h.executor_id),
             reviewer_name=_turon_name(turon_db, h.reviewer_id),
