@@ -106,7 +106,10 @@ class MobileMissionCreate(BaseModel):
     category: Optional[str] = None
     executor_id: int = Field(..., description="executor id in the caller's system")
     reviewer_id: Optional[int] = None
-    deadline: Optional[date] = None
+    deadline: date = Field(
+        ...,
+        description="Deadline date (required). Backing tables on management and Turon enforce NOT NULL.",
+    )
     kpi_weight: int = 10
 
 
@@ -172,6 +175,23 @@ class MobileMeUpdate(BaseModel):
 class MobilePasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=6)
+
+
+# ── Executor picker ──────────────────────────────────────────────────────────
+
+class MobileExecutorOut(BaseModel):
+    """One entry in the mission-create user picker.
+
+    Same shape across all three systems so the mobile client can render a
+    single list. `id` is the user's id in the caller's home system — that's
+    the value the mobile app must send back as `executor_id` / `reviewer_id`
+    on `POST /mobile/missions`.
+    """
+    id: int
+    system: SystemLiteral
+    name: Optional[str] = None
+    surname: Optional[str] = None
+    role: Optional[str] = None
 
 
 # ── Mission history & related "events" ───────────────────────────────────────

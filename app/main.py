@@ -45,6 +45,7 @@ from .mobile import (
     me as mobile_me,
     missions as mobile_missions,
     telegram as mobile_telegram,
+    users as mobile_users,
 )
 
 @asynccontextmanager
@@ -196,6 +197,7 @@ app.include_router(mobile_missions.router, prefix=V1)
 app.include_router(mobile_events.router, prefix=V1)
 app.include_router(mobile_telegram.router, prefix=V1)
 app.include_router(mobile_me.router, prefix=V1)
+app.include_router(mobile_users.router, prefix=V1)
 
 
 @app.get("/docs", include_in_schema=False)
