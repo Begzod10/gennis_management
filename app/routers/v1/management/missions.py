@@ -191,9 +191,9 @@ def _log_history(
         turon_executor_name=mission.turon_executor_name,
         turon_reviewer_id=mission.turon_reviewer_id,
         turon_reviewer_name=mission.turon_reviewer_name,
-        status=status if status is not None else mission.status,
         note=note,
     )
+    entry._status_hint = status if status is not None else mission.status
     db.add(entry)
     return entry
 
@@ -222,7 +222,7 @@ def _sync_history_to_gennis(entry: MissionHistory, mission: Mission, db: Session
         turon_reviewer_id=entry.turon_reviewer_id,
         turon_reviewer_name=entry.turon_reviewer_name,
         changed_by_name=_resolve_user_name(db, entry.changed_by_id),
-        status=entry.status,
+        status=getattr(entry, "_status_hint", None) or mission.status,
         note=entry.note,
         created_at=entry.created_at,
     )
@@ -1727,11 +1727,11 @@ def user_mission_performance(
     Two on_time / late breakdowns are computed:
       - delivery (on_time / late): based on effective_finish — the date the
         executor delivered. Source: mission.finish_date, falling back to the
-        earliest MissionHistory entry where status flipped to
-        'completed' or 'approved'.
+        latest MissionHistory created_at for the mission (legacy rows where
+        finish_date was never written).
       - approval (approved_on_time / approved_late): based on effective_approved
         — the date the reviewer signed off. Source: mission.approved_date,
-        falling back to the earliest MissionHistory entry with status='approved'.
+        falling back to the latest MissionHistory created_at for the mission.
 
     'On time' = effective_date <= deadline. 'Late' = effective_date > deadline.
 
@@ -1772,11 +1772,8 @@ def user_mission_performance(
     history_finish: dict[int, date] = {}
     if finish_backfill_ids:
         rows = (
-            db.query(MissionHistory.mission_id, func.min(MissionHistory.created_at))
-            .filter(
-                MissionHistory.mission_id.in_(finish_backfill_ids),
-                MissionHistory.status.in_(("completed", "approved")),
-            )
+            db.query(MissionHistory.mission_id, func.max(MissionHistory.created_at))
+            .filter(MissionHistory.mission_id.in_(finish_backfill_ids))
             .group_by(MissionHistory.mission_id)
             .all()
         )
@@ -1785,11 +1782,8 @@ def user_mission_performance(
     history_approved: dict[int, date] = {}
     if approved_backfill_ids:
         rows = (
-            db.query(MissionHistory.mission_id, func.min(MissionHistory.created_at))
-            .filter(
-                MissionHistory.mission_id.in_(approved_backfill_ids),
-                MissionHistory.status == "approved",
-            )
+            db.query(MissionHistory.mission_id, func.max(MissionHistory.created_at))
+            .filter(MissionHistory.mission_id.in_(approved_backfill_ids))
             .group_by(MissionHistory.mission_id)
             .all()
         )
