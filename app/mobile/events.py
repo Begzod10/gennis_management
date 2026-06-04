@@ -213,7 +213,7 @@ def mission_history(
         return [
             MobileHistoryEntry(
                 id=h.id, source="gennis",
-                status=h.status, note=h.note,
+                status=None, note=h.note,
                 changed_by_name=h.changed_by_name,
                 executor_name=_gennis_name(gennis_db, h.executor_id),
                 reviewer_name=_gennis_name(gennis_db, h.reviewer_id),

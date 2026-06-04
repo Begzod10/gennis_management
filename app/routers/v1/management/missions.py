@@ -193,7 +193,6 @@ def _log_history(
         turon_reviewer_name=mission.turon_reviewer_name,
         note=note,
     )
-    entry._status_hint = status if status is not None else mission.status
     db.add(entry)
     return entry
 
@@ -222,7 +221,6 @@ def _sync_history_to_gennis(entry: MissionHistory, mission: Mission, db: Session
         turon_reviewer_id=entry.turon_reviewer_id,
         turon_reviewer_name=entry.turon_reviewer_name,
         changed_by_name=_resolve_user_name(db, entry.changed_by_id),
-        status=getattr(entry, "_status_hint", None) or mission.status,
         note=entry.note,
         created_at=entry.created_at,
     )
