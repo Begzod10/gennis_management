@@ -14,6 +14,10 @@ class Settings:
     # backend (mobile apps each get their own). Comma-separated. Web client is
     # always trusted via GOOGLE_CLIENT_ID above.
     GOOGLE_ALLOWED_CLIENT_IDS: str = os.getenv("GOOGLE_ALLOWED_CLIENT_IDS", "")
+    # Apple Sign In — Apple bundle IDs / Service IDs accepted as `aud` claims.
+    # For the native iOS app this is the app bundle ID (e.g. uz.gennis.todo).
+    # Comma-separated when adding a web/Android Service ID later.
+    APPLE_ALLOWED_CLIENT_IDS: str = os.getenv("APPLE_ALLOWED_CLIENT_IDS", "")
     BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8000")
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))

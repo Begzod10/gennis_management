@@ -15,6 +15,7 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     get_password_hash,
+    verify_apple_token,
     verify_google_token,
     verify_password,
     verify_refresh_token,
@@ -23,6 +24,7 @@ from app.database import get_db, get_gennis_db, get_turon_db
 from app.external_models.gennis import Users as GennisUsers
 from app.external_models.turon import CustomUser as TuronUser
 from app.mobile.schemas import (
+    MobileAppleAuthRequest,
     MobileAuthResponse,
     MobileGoogleAuthRequest,
     MobileLoginRequest,
@@ -311,6 +313,100 @@ def mobile_google_auth(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account disabled",
         )
+
+    token_claims = {
+        "sub": f"management:{user.id}",
+        "system": "management",
+        "external_id": user.id,
+        "management_user_id": user.id,
+        "name": f"{user.name or ''} {user.surname or ''}".strip() or None,
+        "role": user.role,
+    }
+    access_token = create_access_token(
+        data=token_claims,
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    refresh_token = create_refresh_token(data=token_claims)
+
+    return MobileAuthResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=MobileUserOut(
+            id=user.id,
+            system="management",
+            name=user.name,
+            surname=user.surname,
+            role=user.role,
+        ),
+    )
+
+
+@router.post("/apple", response_model=MobileAuthResponse)
+def mobile_apple_auth(
+    payload: MobileAppleAuthRequest,
+    db: Session = Depends(get_db),
+):
+    """Sign in a management staff user from an Apple identity token.
+
+    Required by App Store Guideline 4.8 (apps offering third-party login must
+    also offer Sign in with Apple). The iOS app runs native Sign in with Apple,
+    receives an `identityToken`, and sends it here. We verify the token against
+    Apple's public keys, then match the email to an existing staff account.
+
+    Unlike `/auth/google`, no auto-registration: an unmatched email returns
+    401. This mirrors the spec's "EXISTING staff user" rule — the org app has
+    no self-signup surface, so any new staff must be created by an admin
+    first. (Apple Private Relay emails will not match by definition; that's a
+    known trade-off and is documented in the spec.)
+    """
+    try:
+        claims = verify_apple_token(payload.token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
+
+    # Apple omits `email` on returning sign-ins; fall back to what the iOS app
+    # forwarded from the first authorization, if anything.
+    email = (claims.get("email") or payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Apple token did not provide an email and none was forwarded",
+        )
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No staff account is linked to this Apple ID",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled",
+        )
+
+    now = datetime.utcnow()
+    # Backfill name from Apple's first-auth payload if missing on the staff
+    # record; do not overwrite an admin-curated name.
+    forwarded_name = (payload.name or "").strip()
+    if forwarded_name and not (user.name or "").strip():
+        parts = forwarded_name.split(None, 1)
+        user.name = parts[0]
+        if len(parts) > 1 and not (user.surname or "").strip():
+            user.surname = parts[1]
+    if claims.get("email_verified") in ("true", True):
+        user.is_verified = True
+    user.last_login = now
+    user.updated_at = now
+    if user.auth_provider == "email":
+        user.auth_provider = "apple"
+    db.commit()
+    db.refresh(user)
 
     token_claims = {
         "sub": f"management:{user.id}",

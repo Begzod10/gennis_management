@@ -31,6 +31,15 @@ class MobileGoogleAuthRequest(BaseModel):
     token: str = Field(..., description="Google ID token from the mobile Google Sign-In SDK")
 
 
+class MobileAppleAuthRequest(BaseModel):
+    token: str = Field(..., description="Apple identityToken (JWT) from native Sign in with Apple on iOS")
+    # Apple only sends name/email on the very first authorization; the app may
+    # forward them here so we can backfill the matched staff record. Matching
+    # itself is driven by the token's `email` claim, not these fields.
+    name: Optional[str] = None
+    email: Optional[str] = None
+
+
 class MobileUserOut(BaseModel):
     id: int
     system: SystemLiteral
