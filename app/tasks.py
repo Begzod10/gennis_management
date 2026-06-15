@@ -55,8 +55,9 @@ def send_telegram_notification(chat_id: int, text: str):
         logger.warning("telegram skip: chat_id is empty")
         return
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+    proxy = settings.TELEGRAM_PROXY or None
     try:
-        with httpx.Client(timeout=5.0, trust_env=False) as client:
+        with httpx.Client(timeout=5.0, proxy=proxy) as client:
             resp = client.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
         if resp.status_code != 200:
             snippet = resp.text[:300].replace("\n", " ")

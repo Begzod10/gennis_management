@@ -26,6 +26,10 @@ class Settings:
     SMTP_FROM: str = os.getenv("SMTP_FROM", "")
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_WEBHOOK_SECRET: str = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    # Optional HTTP/SOCKS5 proxy for Telegram API calls (needed when api.telegram.org
+    # is blocked by the hosting provider). Example: "socks5://user:pass@host:1080"
+    # or "http://host:3128". Leave empty to connect directly.
+    TELEGRAM_PROXY: str = os.getenv("TELEGRAM_PROXY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
