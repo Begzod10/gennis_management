@@ -88,6 +88,7 @@ def verify_google_token(id_token: str) -> dict:
 
     allowed = {cid.strip() for cid in (
         settings.GOOGLE_CLIENT_ID,
+        settings.MOBILE_CLIENT_ID,
         *settings.GOOGLE_ALLOWED_CLIENT_IDS.split(","),
     ) if cid and cid.strip()}
     if allowed and info.get("aud") not in allowed:

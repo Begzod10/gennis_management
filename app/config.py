@@ -10,6 +10,7 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    MOBILE_CLIENT_ID: str = os.getenv("MOBILE_CLIENT_ID", "")
     # Additional OAuth client IDs that can issue Google ID tokens against this
     # backend (mobile apps each get their own). Comma-separated. Web client is
     # always trusted via GOOGLE_CLIENT_ID above.
