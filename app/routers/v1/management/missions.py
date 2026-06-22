@@ -298,7 +298,7 @@ def _validate_role_assignment(
         return  # cross-dept allowed
 
     # Use the highest-privilege role the creator holds
-    all_creator_roles = {creator.role} | {r.role for r in (creator.extra_roles or [])}
+    all_creator_roles = {creator.role} | {r.role for r in (getattr(creator, "extra_roles", None) or [])}
     creator_role = next(
         (r for r in ("super_admin", "director", "ad", "dept_head", "deputy_director",
                      "team_lead", "project_manager", "manager", "employee")
