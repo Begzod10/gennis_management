@@ -51,34 +51,38 @@ from .mobile import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create management_dividend/investment tables in external DBs if not exist
-    GennisDividend.__table__.create(bind=gennis_write_engine, checkfirst=True)
-    TuronDividend.__table__.create(bind=turon_write_engine, checkfirst=True)
-    GennisInvestment.__table__.create(bind=gennis_write_engine, checkfirst=True)
-    TuronInvestment.__table__.create(bind=turon_write_engine, checkfirst=True)
+    try:
+        GennisDividend.__table__.create(bind=gennis_write_engine, checkfirst=True)
+        GennisInvestment.__table__.create(bind=gennis_write_engine, checkfirst=True)
+        with gennis_write_engine.connect() as conn:
+            conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
+            conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS reviewer_name VARCHAR(255)"))
+            conn.execute(text("ALTER TABLE mission_subtasks ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE mission_subtasks ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
+            conn.execute(text("ALTER TABLE mission_attachments ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE mission_attachments ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
+            conn.execute(text("ALTER TABLE mission_comments ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE mission_comments ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
+            conn.execute(text("ALTER TABLE mission_proofs ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE mission_proofs ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
+            conn.execute(text("ALTER TABLE overheadtype ADD COLUMN IF NOT EXISTS management_id BIGINT"))
+            conn.commit()
+    except Exception as exc:
+        _log.warning("Gennis DB unavailable at startup, skipping schema sync: %s", exc)
 
-    # Add management_id to Gennis missions table and Turon tasks_mission table
-    with gennis_write_engine.connect() as conn:
-        conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
-        conn.execute(text("ALTER TABLE missions ADD COLUMN IF NOT EXISTS reviewer_name VARCHAR(255)"))
-        conn.execute(text("ALTER TABLE mission_subtasks ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE mission_subtasks ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
-        conn.execute(text("ALTER TABLE mission_attachments ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE mission_attachments ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
-        conn.execute(text("ALTER TABLE mission_comments ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE mission_comments ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
-        conn.execute(text("ALTER TABLE mission_proofs ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE mission_proofs ADD COLUMN IF NOT EXISTS creator_name VARCHAR(255)"))
-        conn.execute(text("ALTER TABLE overheadtype ADD COLUMN IF NOT EXISTS management_id BIGINT"))
-        conn.commit()
-    with turon_write_engine.connect() as conn:
-        conn.execute(text("ALTER TABLE tasks_mission ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE tasks_missionsubtask ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE tasks_missionattachment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE tasks_missioncomment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.execute(text("ALTER TABLE tasks_missionproof ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
-        conn.commit()
+    try:
+        TuronDividend.__table__.create(bind=turon_write_engine, checkfirst=True)
+        TuronInvestment.__table__.create(bind=turon_write_engine, checkfirst=True)
+        with turon_write_engine.connect() as conn:
+            conn.execute(text("ALTER TABLE tasks_mission ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE tasks_missionsubtask ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE tasks_missionattachment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE tasks_missioncomment ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.execute(text("ALTER TABLE tasks_missionproof ADD COLUMN IF NOT EXISTS management_id BIGINT UNIQUE"))
+            conn.commit()
+    except Exception as exc:
+        _log.warning("Turon DB unavailable at startup, skipping schema sync: %s", exc)
 
     yield
 
