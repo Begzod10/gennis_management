@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.core.security import decode_access_token
@@ -27,14 +27,7 @@ def get_current_user(
     if not sub:
         raise credentials_exception
 
-    user = (
-        db.query(models.User)
-        .options(joinedload(models.User.extra_roles))
-        .filter(
-            (models.User.email == sub) | (models.User.username == sub)
-        )
-        .first()
-    )
+    user = db.query(models.User).filter(models.User.email == sub).first()
     if not user:
         raise credentials_exception
     if not user.is_active:
@@ -44,8 +37,8 @@ def get_current_user(
 
 def has_role(user: models.User, *roles: str) -> bool:
     """Return True if the user holds any of the given roles."""
-    user_roles = {user.role} | {r.role for r in (user.extra_roles or [])}
-    return bool(user_roles & set(roles))
+    extra = {r.role for r in user.extra_roles} if hasattr(user, "extra_roles") and user.extra_roles else set()
+    return bool(({user.role} | extra) & set(roles))
 
 
 def require_roles(*roles: str):
