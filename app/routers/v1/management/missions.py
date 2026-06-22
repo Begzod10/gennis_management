@@ -1,9 +1,11 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import or_, func
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
+from app.dependencies import has_role
 from app.models import Mission, MissionHistory, MissionSubtask, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job, MobileTelegramLink
 from app.services.openai_assistant import (
     ExecutorCandidate,
@@ -24,6 +26,8 @@ from app.services.telegram import (
     tpl_status_changed, tpl_approved, tpl_declined,
     tpl_redirected_new, tpl_redirected_creator, tpl_deleted, tpl_updated,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _tg(db: Session, user_id: Optional[int], tpl_fn, *args):
@@ -205,61 +209,69 @@ def _resolve_user_name(db: Session, user_id: Optional[int]) -> Optional[str]:
 
 
 def _sync_history_to_gennis(entry: MissionHistory, mission: Mission, db: Session, gennis_db: Session):
-    gennis_mission = gennis_db.query(GennisMission).filter(GennisMission.management_id == mission.id).first()
-    if not gennis_mission:
-        return
-    kwargs = dict(
-        mission_id=gennis_mission.id,
-        executor_id=entry.gennis_executor_id,
-        reviewer_id=entry.gennis_reviewer_id,
-        management_executor_id=entry.executor_id,
-        management_executor_name=_resolve_user_name(db, entry.executor_id),
-        management_reviewer_id=entry.reviewer_id,
-        management_reviewer_name=_resolve_user_name(db, entry.reviewer_id),
-        turon_executor_id=entry.turon_executor_id,
-        turon_executor_name=entry.turon_executor_name,
-        turon_reviewer_id=entry.turon_reviewer_id,
-        turon_reviewer_name=entry.turon_reviewer_name,
-        changed_by_name=_resolve_user_name(db, entry.changed_by_id),
-        note=entry.note,
-        created_at=entry.created_at,
-    )
-    existing = gennis_db.query(GennisMissionHistory).filter(GennisMissionHistory.management_id == entry.id).first()
-    if existing:
-        for k, v in kwargs.items():
-            setattr(existing, k, v)
-    else:
-        gennis_db.add(GennisMissionHistory(management_id=entry.id, **kwargs))
-    gennis_db.commit()
+    try:
+        gennis_mission = gennis_db.query(GennisMission).filter(GennisMission.management_id == mission.id).first()
+        if not gennis_mission:
+            return
+        kwargs = dict(
+            mission_id=gennis_mission.id,
+            executor_id=entry.gennis_executor_id,
+            reviewer_id=entry.gennis_reviewer_id,
+            management_executor_id=entry.executor_id,
+            management_executor_name=_resolve_user_name(db, entry.executor_id),
+            management_reviewer_id=entry.reviewer_id,
+            management_reviewer_name=_resolve_user_name(db, entry.reviewer_id),
+            turon_executor_id=entry.turon_executor_id,
+            turon_executor_name=entry.turon_executor_name,
+            turon_reviewer_id=entry.turon_reviewer_id,
+            turon_reviewer_name=entry.turon_reviewer_name,
+            changed_by_name=_resolve_user_name(db, entry.changed_by_id),
+            note=entry.note,
+            created_at=entry.created_at,
+        )
+        existing = gennis_db.query(GennisMissionHistory).filter(GennisMissionHistory.management_id == entry.id).first()
+        if existing:
+            for k, v in kwargs.items():
+                setattr(existing, k, v)
+        else:
+            gennis_db.add(GennisMissionHistory(management_id=entry.id, **kwargs))
+        gennis_db.commit()
+    except Exception as exc:
+        logger.warning("Gennis history sync failed (mission %s): %s", mission.id, exc)
+        gennis_db.rollback()
 
 
 def _sync_history_to_turon(entry: MissionHistory, mission: Mission, db: Session, turon_db: Session):
-    turon_mission = turon_db.query(TuronMission).filter(TuronMission.management_id == mission.id).first()
-    if not turon_mission:
-        return
-    kwargs = dict(
-        mission_id=turon_mission.id,
-        executor_id=entry.turon_executor_id,
-        reviewer_id=entry.turon_reviewer_id,
-        management_executor_id=entry.executor_id,
-        management_executor_name=_resolve_user_name(db, entry.executor_id),
-        management_reviewer_id=entry.reviewer_id,
-        management_reviewer_name=_resolve_user_name(db, entry.reviewer_id),
-        gennis_executor_id=entry.gennis_executor_id,
-        gennis_executor_name=entry.gennis_executor_name,
-        gennis_reviewer_id=entry.gennis_reviewer_id,
-        gennis_reviewer_name=entry.gennis_reviewer_name,
-        changed_by_name=_resolve_user_name(db, entry.changed_by_id),
-        note=entry.note,
-        created_at=entry.created_at,
-    )
-    existing = turon_db.query(TuronMissionHistory).filter(TuronMissionHistory.management_id == entry.id).first()
-    if existing:
-        for k, v in kwargs.items():
-            setattr(existing, k, v)
-    else:
-        turon_db.add(TuronMissionHistory(management_id=entry.id, **kwargs))
-    turon_db.commit()
+    try:
+        turon_mission = turon_db.query(TuronMission).filter(TuronMission.management_id == mission.id).first()
+        if not turon_mission:
+            return
+        kwargs = dict(
+            mission_id=turon_mission.id,
+            executor_id=entry.turon_executor_id,
+            reviewer_id=entry.turon_reviewer_id,
+            management_executor_id=entry.executor_id,
+            management_executor_name=_resolve_user_name(db, entry.executor_id),
+            management_reviewer_id=entry.reviewer_id,
+            management_reviewer_name=_resolve_user_name(db, entry.reviewer_id),
+            gennis_executor_id=entry.gennis_executor_id,
+            gennis_executor_name=entry.gennis_executor_name,
+            gennis_reviewer_id=entry.gennis_reviewer_id,
+            gennis_reviewer_name=entry.gennis_reviewer_name,
+            changed_by_name=_resolve_user_name(db, entry.changed_by_id),
+            note=entry.note,
+            created_at=entry.created_at,
+        )
+        existing = turon_db.query(TuronMissionHistory).filter(TuronMissionHistory.management_id == entry.id).first()
+        if existing:
+            for k, v in kwargs.items():
+                setattr(existing, k, v)
+        else:
+            turon_db.add(TuronMissionHistory(management_id=entry.id, **kwargs))
+        turon_db.commit()
+    except Exception as exc:
+        logger.warning("Turon history sync failed (mission %s): %s", mission.id, exc)
+        turon_db.rollback()
 
 
 def _get_or_404(db: Session, mission_id: int) -> Mission:
@@ -280,12 +292,19 @@ def _validate_role_assignment(
     """Raise 403 if the creator is not allowed to assign to executor."""
     if creator.id == executor.id:
         return  # anyone can assign to themselves
-    if creator.role in OWNER_ROLES:
+    if has_role(creator, *OWNER_ROLES):
         return  # owner can assign to anyone
     if channel == "service_request":
         return  # cross-dept allowed
 
-    creator_role = creator.role
+    # Use the highest-privilege role the creator holds
+    all_creator_roles = {creator.role} | {r.role for r in (creator.extra_roles or [])}
+    creator_role = next(
+        (r for r in ("super_admin", "director", "ad", "dept_head", "deputy_director",
+                     "team_lead", "project_manager", "manager", "employee")
+         if r in all_creator_roles),
+        creator.role,
+    )
     executor_role = executor.role
 
     if creator_role == "manager":
@@ -350,7 +369,7 @@ OWNER_ROLES = {"owner"}
 
 def _check_owner_permission(creator: User, db: Session):
     """Only the owner role can assign to Gennis/Turon executors or project members."""
-    if creator.role not in OWNER_ROLES:
+    if not has_role(creator, *OWNER_ROLES):
         raise HTTPException(
             status_code=403,
             detail="Only owner can assign missions to Gennis/Turon executors or project members",
@@ -423,135 +442,149 @@ def _find_turon_director(branch_id: int, turon_db: Session) -> Optional[int]:
 # ── Sync helpers ──────────────────────────────────────────────────────────────
 
 def _sync_to_gennis(mission: Mission, gennis_db: Session):
-    # Only sync if we have a valid executor to assign in Gennis
     if not mission.gennis_executor_id:
         return
-    deadline_dt = datetime.combine(mission.deadline, datetime.min.time()) if mission.deadline else None
-    creator_name = (
-        f"{mission.creator.name} {mission.creator.surname}".strip()
-        if mission.creator else "from office"
-    )
-    existing = (
-        gennis_db.query(GennisMission)
-        .filter(GennisMission.management_id == mission.id)
-        .first()
-    )
-    if existing:
-        existing.title = mission.title
-        existing.description = mission.description
-        existing.category = mission.category
-        existing.status = mission.status
-        existing.deadline_datetime = deadline_dt
-        existing.location_id = mission.location_id
-        existing.creator_id = None
-        existing.creator_name = creator_name
-        existing.executor_id = mission.gennis_executor_id
-        existing.reviewer_id = mission.gennis_reviewer_id
-        existing.reviewer_name = mission.gennis_reviewer_name
-        existing.kpi_weight = mission.kpi_weight
-        existing.delay_days = mission.delay_days
-        existing.final_sc = mission.final_sc
-    else:
-        record = GennisMission(
-            management_id=mission.id,
-            title=mission.title,
-            description=mission.description,
-            category=mission.category,
-            status=mission.status,
-            start_datetime=mission.created_at,
-            deadline_datetime=deadline_dt,
-            location_id=mission.location_id,
-            creator_id=None,
-            creator_name=creator_name,
-            executor_id=mission.gennis_executor_id,
-            reviewer_id=mission.gennis_reviewer_id,
-            reviewer_name=mission.gennis_reviewer_name,
-            kpi_weight=mission.kpi_weight,
-            delay_days=mission.delay_days,
-            final_sc=mission.final_sc,
-            created_at=mission.created_at,
+    try:
+        deadline_dt = datetime.combine(mission.deadline, datetime.min.time()) if mission.deadline else None
+        creator_name = (
+            f"{mission.creator.name} {mission.creator.surname}".strip()
+            if mission.creator else "from office"
         )
-        gennis_db.add(record)
-    gennis_db.commit()
-
-
-def _sync_to_turon(mission: Mission, turon_db: Session):
-    # Only sync if we have a valid executor to assign in Turon
-    if not mission.turon_executor_id:
-        return
-    existing = (
-        turon_db.query(TuronMission)
-        .filter(TuronMission.management_id == mission.id)
-        .first()
-    )
-    creator_name = (
-        f"{mission.creator.name} {mission.creator.surname}".strip()
-        if mission.creator else "from office"
-    )
-    if existing:
-        existing.title = mission.title
-        existing.description = mission.description
-        existing.category = mission.category
-        existing.status = mission.status
-        existing.deadline = mission.deadline
-        existing.branch_id = mission.branch_id
-        existing.creator_id = None
-        existing.creator_name = creator_name
-        existing.executor_id = mission.turon_executor_id
-        existing.reviewer_id = mission.turon_reviewer_id
-        existing.reviewer_name = mission.turon_reviewer_name
-        existing.kpi_weight = mission.kpi_weight
-        existing.delay_days = mission.delay_days
-        existing.final_sc = mission.final_sc
-        existing.is_redirected = mission.is_redirected
-        existing.repeat_every = mission.repeat_every
-    else:
-        record = TuronMission(
-            management_id=mission.id,
-            title=mission.title,
-            description=mission.description,
-            category=mission.category,
-            status=mission.status,
-            start_date=mission.created_at.date() if mission.created_at else None,
-            deadline=mission.deadline,
-            branch_id=mission.branch_id,
-            creator_id=None,
-            creator_name=creator_name,
-            executor_id=mission.turon_executor_id,
-            reviewer_id=mission.turon_reviewer_id,
-            reviewer_name=mission.turon_reviewer_name,
-            kpi_weight=mission.kpi_weight,
-            delay_days=mission.delay_days,
-            final_sc=mission.final_sc,
-            is_redirected=bool(mission.is_redirected),
-            is_recurring=bool(mission.is_recurring),
-            repeat_every=mission.repeat_every or 1,
-            created_at=mission.created_at.date() if mission.created_at else None,
-            updated_at=mission.updated_at.date() if mission.updated_at else None,
-        )
-        turon_db.add(record)
-    turon_db.commit()
-
-
-def _sync_delete(mission: Mission, gennis_db: Session, turon_db: Session):
-    if mission.gennis_executor_id:
-        rec = (
+        existing = (
             gennis_db.query(GennisMission)
             .filter(GennisMission.management_id == mission.id)
             .first()
         )
-        if rec:
-            rec.status = "declined"
-            gennis_db.commit()
-    if mission.turon_executor_id:
-        rec = (
+        if existing:
+            existing.title = mission.title
+            existing.description = mission.description
+            existing.category = mission.category
+            existing.status = mission.status
+            existing.deadline_datetime = deadline_dt
+            existing.location_id = mission.location_id
+            existing.creator_id = None
+            existing.creator_name = creator_name
+            existing.executor_id = mission.gennis_executor_id
+            existing.reviewer_id = mission.gennis_reviewer_id
+            existing.reviewer_name = mission.gennis_reviewer_name
+            existing.kpi_weight = mission.kpi_weight
+            existing.delay_days = mission.delay_days
+            existing.final_sc = mission.final_sc
+        else:
+            record = GennisMission(
+                management_id=mission.id,
+                title=mission.title,
+                description=mission.description,
+                category=mission.category,
+                status=mission.status,
+                start_datetime=mission.created_at,
+                deadline_datetime=deadline_dt,
+                location_id=mission.location_id,
+                creator_id=None,
+                creator_name=creator_name,
+                executor_id=mission.gennis_executor_id,
+                reviewer_id=mission.gennis_reviewer_id,
+                reviewer_name=mission.gennis_reviewer_name,
+                kpi_weight=mission.kpi_weight,
+                delay_days=mission.delay_days,
+                final_sc=mission.final_sc,
+                created_at=mission.created_at,
+            )
+            gennis_db.add(record)
+        gennis_db.commit()
+    except Exception as exc:
+        logger.warning("Gennis mission sync failed (mission %s): %s", mission.id, exc)
+        gennis_db.rollback()
+
+
+def _sync_to_turon(mission: Mission, turon_db: Session):
+    if not mission.turon_executor_id:
+        return
+    try:
+        existing = (
             turon_db.query(TuronMission)
             .filter(TuronMission.management_id == mission.id)
             .first()
         )
-        if rec:
-            rec.status = "declined"
-            turon_db.commit()
+        creator_name = (
+            f"{mission.creator.name} {mission.creator.surname}".strip()
+            if mission.creator else "from office"
+        )
+        if existing:
+            existing.title = mission.title
+            existing.description = mission.description
+            existing.category = mission.category
+            existing.status = mission.status
+            existing.deadline = mission.deadline
+            existing.branch_id = mission.branch_id
+            existing.creator_id = None
+            existing.creator_name = creator_name
+            existing.executor_id = mission.turon_executor_id
+            existing.reviewer_id = mission.turon_reviewer_id
+            existing.reviewer_name = mission.turon_reviewer_name
+            existing.kpi_weight = mission.kpi_weight
+            existing.delay_days = mission.delay_days
+            existing.final_sc = mission.final_sc
+            existing.is_redirected = mission.is_redirected
+            existing.repeat_every = mission.repeat_every
+        else:
+            record = TuronMission(
+                management_id=mission.id,
+                title=mission.title,
+                description=mission.description,
+                category=mission.category,
+                status=mission.status,
+                start_date=mission.created_at.date() if mission.created_at else None,
+                deadline=mission.deadline,
+                branch_id=mission.branch_id,
+                creator_id=None,
+                creator_name=creator_name,
+                executor_id=mission.turon_executor_id,
+                reviewer_id=mission.turon_reviewer_id,
+                reviewer_name=mission.turon_reviewer_name,
+                kpi_weight=mission.kpi_weight,
+                delay_days=mission.delay_days,
+                final_sc=mission.final_sc,
+                is_redirected=bool(mission.is_redirected),
+                is_recurring=bool(mission.is_recurring),
+                repeat_every=mission.repeat_every or 1,
+                created_at=mission.created_at.date() if mission.created_at else None,
+                updated_at=mission.updated_at.date() if mission.updated_at else None,
+            )
+            turon_db.add(record)
+        turon_db.commit()
+    except Exception as exc:
+        logger.warning("Turon mission sync failed (mission %s): %s", mission.id, exc)
+        turon_db.rollback()
+
+
+def _sync_delete(mission: Mission, gennis_db: Session, turon_db: Session):
+    if mission.gennis_executor_id:
+        try:
+            rec = (
+                gennis_db.query(GennisMission)
+                .filter(GennisMission.management_id == mission.id)
+                .first()
+            )
+            if rec:
+                rec.status = "declined"
+                gennis_db.commit()
+        except Exception as exc:
+            logger.warning("Gennis delete sync failed (mission %s): %s", mission.id, exc)
+            gennis_db.rollback()
+    if mission.turon_executor_id:
+        try:
+            rec = (
+                turon_db.query(TuronMission)
+                .filter(TuronMission.management_id == mission.id)
+                .first()
+            )
+            if rec:
+                rec.status = "declined"
+                turon_db.commit()
+        except Exception as exc:
+            logger.warning("Turon delete sync failed (mission %s): %s", mission.id, exc)
+            turon_db.rollback()
 
 
 # ── Mission CRUD ──────────────────────────────────────────────────────────────
@@ -579,7 +612,7 @@ def create_mission(
             base["branch_name"] = branch.name
 
     # Auto-fill executor IDs from branch/location directors only for owners
-    if creator.role in OWNER_ROLES:
+    if has_role(creator, *OWNER_ROLES):
         if base.get("location_id") and not base.get("gennis_executor_id"):
             base["gennis_executor_id"] = _find_gennis_manager(base["location_id"], gennis_db)
         if base.get("branch_id") and not base.get("turon_executor_id"):
@@ -792,7 +825,7 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
             users.append(creator)
         return users
 
-    if creator.role in OWNER_ROLES:
+    if has_role(creator, *OWNER_ROLES):
         # Owners assign top-level / unassigned people only; project and section
         # members are the responsibility of their respective managers / leaders.
         from sqlalchemy import select
@@ -806,7 +839,7 @@ def _eligible_executors(creator: User, channel: str, project_id: Optional[int], 
     if channel == "service_request":
         return base.all()
 
-    if creator.role == "manager":
+    if has_role(creator, "manager"):
         if project_id:
             project = db.query(Project).filter(
                 Project.id == project_id,
@@ -1410,7 +1443,7 @@ def redirect_mission(
         raise HTTPException(status_code=404, detail="Redirected by user not found")
 
     # Managers can only redirect to members of their projects or sections
-    if redirected_by.role == "manager":
+    if has_role(redirected_by, "manager"):
         in_project = (
             db.query(ProjectMember)
             .join(Project, Project.id == ProjectMember.project_id)
