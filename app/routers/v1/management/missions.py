@@ -5,6 +5,7 @@ from sqlalchemy import or_, func
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from app.database import get_db, get_gennis_db, get_turon_db, get_gennis_write_db, get_turon_write_db
+from app.dependencies import has_role
 from app.models import Mission, MissionHistory, MissionSubtask, Tag, User, ProjectMember, Branch, Project, Section, SectionMember, Job, MobileTelegramLink
 from app.services.openai_assistant import (
     ExecutorCandidate,
