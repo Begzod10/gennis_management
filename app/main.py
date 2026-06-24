@@ -31,7 +31,7 @@ from .routers.v1.management import (
     mission_subtask_comments, mission_subtask_attachments, mission_subtask_proofs,
     notifications, statistics, dividends, investments,
     projects, sections, combined, telegram_bot, branch_loans,
-    admin_requests, branch_transactions, overhead_type_logs, voice_missions,
+    admin_requests, branch_transactions, overhead_type_logs, voice_missions, voice_realtime,
 )
 from .routers.v1.gennis import detail as gennis_detail
 from .routers.v1.turon import (
@@ -198,6 +198,7 @@ app.include_router(turon_teachers.router, prefix=V1)
 app.include_router(turon_terms.router, prefix=V1)
 app.include_router(telegram_bot.router, prefix=V1)
 app.include_router(voice_missions.router, prefix=V1)
+app.include_router(voice_realtime.router, prefix=V1)
 app.include_router(mobile_auth.router, prefix=V1)
 app.include_router(mobile_missions.router, prefix=V1)
 app.include_router(mobile_events.router, prefix=V1)
