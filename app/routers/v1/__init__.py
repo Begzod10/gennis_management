@@ -21,7 +21,7 @@ from .management import (
     notifications, projects,
     salary_days, salary_months, sections,
     statistics, system_models, tags, users,
-    telegram_bot,
+    telegram_bot, voice_missions,
 )
 
 from .gennis import detail as gennis_detail
