@@ -223,7 +223,7 @@ async def telegram_webhook(
                 f"🎤 <i>{result['transcript']}</i>"
             )
         else:
-            reply = f"❌ {result.get('error', 'Noma\\'lum xato')}"
+            reply = "❌ " + result.get("error", "Noma'lum xato")
             if result.get("transcript"):
                 reply += f"\n\n🎤 <i>{result['transcript']}</i>"
             if result.get("title"):
