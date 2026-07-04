@@ -96,8 +96,11 @@ _FUNCTION_DECLARATIONS = [
 ]
 
 
-def build_setup_message() -> dict:
+def build_setup_message(creator_name: str = "") -> dict:
     """Return the first message to send to Gemini Live API after connecting."""
+    prompt = SYSTEM_PROMPT
+    if creator_name:
+        prompt += f"\n\nSen bilan gaplashayotgan kishi: {creator_name}. Vazifani shu kishi yaratayapti. Ijrochi sifatida hech qachon shu kishini tanla."
     return {
         "setup": {
             "model": settings.GEMINI_REALTIME_MODEL,
@@ -112,7 +115,7 @@ def build_setup_message() -> dict:
                 },
             },
             "system_instruction": {
-                "parts": [{"text": SYSTEM_PROMPT}]
+                "parts": [{"text": prompt}]
             },
             "tools": [
                 {"function_declarations": _FUNCTION_DECLARATIONS}

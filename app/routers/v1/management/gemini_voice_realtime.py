@@ -92,7 +92,8 @@ async def gemini_voice_ws(
         async with websockets.connect(gemini_url, **connect_kwargs) as gemini_ws:
 
             # First message: session setup
-            await gemini_ws.send(json.dumps(build_setup_message()))
+            creator_name = f"{creator.name} {creator.surname or ''}".strip()
+            await gemini_ws.send(json.dumps(build_setup_message(creator_name)))
 
             # Wait for setupComplete before telling the client we're ready
             setup_ok = await _wait_for_setup(gemini_ws, websocket)
