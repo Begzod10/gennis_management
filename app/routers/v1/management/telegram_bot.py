@@ -11,6 +11,7 @@ from app.config import settings
 from app.tasks import send_telegram_notification
 from app.routers.v1.auth import get_current_user
 from app.mobile.telegram import consume_mobile_link_code, resolve_mobile_link_code
+from app.services.telegram_voice import process_telegram_voice
 
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
 
@@ -191,6 +192,44 @@ async def telegram_webhook(
             chat_id,
             f"✅ Hurmatli <b>{full_name}</b>, Telegram hisobingiz muvaffaqiyatli bog'landi!",
         )
+
+    # ── Voice message → AI mission creation ──────────────────────────────────
+    elif message.get("voice"):
+        creator = db.query(User).filter(
+            User.telegram_id == chat_id,
+            User.deleted == False,
+            User.is_active == True,
+        ).first()
+
+        if not creator:
+            send_telegram_notification.delay(
+                chat_id,
+                "❌ Telegram hisobingiz bog'lanmagan.\nAvval <b>Management</b> tizimida Telegram ulang.",
+            )
+            return {"ok": True}
+
+        send_telegram_notification.delay(chat_id, "⏳ Ovoz xabari qayta ishlanmoqda...")
+
+        result = await process_telegram_voice(message["voice"]["file_id"], creator.id, db)
+
+        if result["ok"]:
+            reply = (
+                f"✅ <b>Vazifa yaratildi!</b>\n\n"
+                f"📋 {result['title']}\n"
+                f"👤 Ijrochi: <b>{result['executor']}</b>\n"
+                f"📅 Muddat: {result['deadline']}\n"
+                f"🔖 Kategoriya: {result['category']}\n"
+                f"🆔 ID: <code>{result['mission_id']}</code>\n\n"
+                f"🎤 <i>{result['transcript']}</i>"
+            )
+        else:
+            reply = f"❌ {result.get('error', 'Noma\\'lum xato')}"
+            if result.get("transcript"):
+                reply += f"\n\n🎤 <i>{result['transcript']}</i>"
+            if result.get("title"):
+                reply += f"\n📋 Sarlavha: {result['title']}"
+
+        send_telegram_notification.delay(chat_id, reply)
 
     return {"ok": True}
 

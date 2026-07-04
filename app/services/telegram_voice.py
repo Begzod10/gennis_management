@@ -1,0 +1,187 @@
+"""Telegram voice message → AI mission creation pipeline.
+
+Flow:
+  1. Download .ogg voice file from Telegram
+  2. Transcribe via OpenAI Whisper
+  3. GPT picks executor from live list + extracts mission fields
+  4. Create mission in DB, return result dict
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import date, timedelta
+
+import httpx
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models import Mission, User
+from app.services.realtime_session import _executor_dict, _NON_EXECUTOR_ROLES
+
+logger = logging.getLogger(__name__)
+
+_TELEGRAM_API = "https://api.telegram.org"
+
+_EXTRACT_SYSTEM = (
+    "Extract mission details from a voice transcription and pick the best executor. "
+    "Return ONLY valid JSON:\n"
+    '{"title":"short action title","description":"detail or null",'
+    '"executor_id":<int from list or null>,"deadline_days":<int default 3>,'
+    '"category":"academic|admin|student|report|meeting|marketing|maintenance|finance"}\n'
+    "Rules: match executor by name first, then skill, then job, then role. "
+    'Deadline hints: "3 kun"=3, "bir hafta"=7, "2 days"=2.'
+)
+
+_VALID_CATEGORIES = {
+    "academic", "admin", "student", "report",
+    "meeting", "marketing", "maintenance", "finance",
+}
+
+
+async def _download_voice(file_id: str) -> tuple[bytes, str]:
+    token = settings.TELEGRAM_BOT_TOKEN
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.get(
+            f"{_TELEGRAM_API}/bot{token}/getFile",
+            params={"file_id": file_id},
+        )
+        r.raise_for_status()
+        file_path = r.json()["result"]["file_path"]
+        filename = file_path.rsplit("/", 1)[-1]
+        r2 = await client.get(f"{_TELEGRAM_API}/file/bot{token}/{file_path}")
+        r2.raise_for_status()
+        return r2.content, filename
+
+
+async def _transcribe(audio: bytes, filename: str) -> str:
+    base = settings.OPENAI_BASE_URL.rstrip("/")
+    async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
+        r = await client.post(
+            f"{base}/audio/transcriptions",
+            headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+            files={
+                "file": (filename, audio, "audio/ogg"),
+                "model": (None, settings.OPENAI_WHISPER_MODEL),
+                "response_format": (None, "json"),
+            },
+        )
+        r.raise_for_status()
+        return r.json()["text"]
+
+
+async def _extract(transcript: str, executors: list) -> dict:
+    base = settings.OPENAI_BASE_URL.rstrip("/")
+    payload = {
+        "model": settings.OPENAI_MODEL,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": _EXTRACT_SYSTEM},
+            {
+                "role": "user",
+                "content": (
+                    f"Transcription: {transcript}\n\n"
+                    f"Executors:\n{json.dumps(executors, ensure_ascii=False)}"
+                ),
+            },
+        ],
+    }
+    async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
+        r = await client.post(
+            f"{base}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        r.raise_for_status()
+        return json.loads(r.json()["choices"][0]["message"]["content"])
+
+
+async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> dict:
+    """Full pipeline: download → transcribe → extract → create mission."""
+    if not settings.OPENAI_API_KEY:
+        return {"ok": False, "error": "OPENAI_API_KEY sozlanmagan"}
+
+    # 1. Download & transcribe
+    try:
+        audio, filename = await _download_voice(file_id)
+        transcript = await _transcribe(audio, filename)
+    except Exception as exc:
+        logger.error("Voice download/transcribe error: %s", exc)
+        return {"ok": False, "error": "Ovozni matnga o'girib bo'lmadi"}
+
+    logger.info("Telegram voice transcript (creator=%s): %s", creator_id, transcript)
+
+    # 2. Build executor list
+    users = (
+        db.query(User)
+        .filter(
+            User.deleted == False,
+            User.is_active == True,
+            ~User.role.in_(_NON_EXECUTOR_ROLES),
+        )
+        .order_by(User.name)
+        .all()
+    )
+    executors = [_executor_dict(u, db) for u in users]
+
+    # 3. Extract mission fields
+    try:
+        extracted = await _extract(transcript, executors)
+    except Exception as exc:
+        logger.error("GPT extraction error: %s", exc)
+        return {"ok": False, "error": "Vazifani tushunib bo'lmadi", "transcript": transcript}
+
+    title = (extracted.get("title") or "").strip()
+    executor_id = extracted.get("executor_id")
+
+    if not title:
+        return {"ok": False, "error": "Vazifa nomi topilmadi", "transcript": transcript}
+    if not executor_id:
+        return {"ok": False, "error": "Ijrochi aniqlanmadi", "transcript": transcript, "title": title}
+
+    executor = db.query(User).filter(User.id == executor_id, User.deleted == False).first()
+    if not executor:
+        return {"ok": False, "error": f"Ijrochi topilmadi (id={executor_id})", "transcript": transcript}
+
+    # 4. Create mission
+    deadline_days = max(1, int(extracted.get("deadline_days") or 3))
+    deadline = date.today() + timedelta(days=deadline_days)
+    category = str(extracted.get("category", "admin")).lower()
+    if category not in _VALID_CATEGORIES:
+        category = "admin"
+
+    mission = Mission(
+        title=title,
+        description=extracted.get("description") or None,
+        category=category,
+        executor_id=executor_id,
+        creator_id=creator_id,
+        deadline=deadline,
+        status="not_started",
+        kpi_weight=10,
+        penalty_per_day=2,
+        early_bonus_per_day=1,
+        max_bonus=3,
+        max_penalty=10,
+        channel="telegram",
+    )
+    db.add(mission)
+    db.commit()
+    db.refresh(mission)
+
+    executor_name = f"{executor.name} {executor.surname or ''}".strip()
+    logger.info("Telegram voice mission created: id=%s title=%s executor=%s", mission.id, title, executor_name)
+    return {
+        "ok": True,
+        "mission_id": mission.id,
+        "title": title,
+        "executor": executor_name,
+        "deadline": deadline.isoformat(),
+        "category": category,
+        "transcript": transcript,
+    }
