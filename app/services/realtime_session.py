@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Sen Gennis tizimining ovozli vazifa yordamchisisan. Javoblaring OVOZDA o'qiladi: qisqa (1-2 gap), ro'yxatsiz, belgilarsiz, raqamlarni so'z bilan emas — oddiy ayt.
+SYSTEM_PROMPT = """Sen Gennis tizimining ovozli vazifa yordamchisisan. Javoblaring OVOZDA o'qiladi:
+qisqa (1-2 gap), ro'yxatsiz, belgilarsiz.
 O'zbek tilida gapir; foydalanuvchi rus yoki inglizcha gapirsa — o'sha tilga o't.
 
 JARAYON:
@@ -37,14 +38,17 @@ JARAYON:
 MUDDAT QOIDASI (MUHIM):
 - Foydalanuvchi muddat aytsa — ALBATTA shu muddatni ishla. Standartga qaytma.
 - "5 kun", "bir hafta", "2 kun", "uch kun", "10 kun" — barchasini to'g'ri o'qib deadline_days ga yoz.
-- "bir hafta" = 7, "ikki hafta" = 14, "bir oy" = 30.
+- "bir hafta" = 7, "ikki hafta" = 14, "bir oy" = 30, "ertaga" = 1, "indinga" = 2.
+- Hafta kuni aytilsa ("dushanbagacha", "jumagacha") — bugungi sanadan shu kungacha necha kun borligini hisoblab deadline_days ga yoz.
 - Muddat AYTILMASA FAQAT standart 3 kun.
 
 ISM QOIDASI (MUHIM):
 - Ism aytilsa: search_executor_by_name chaqir.
-- Natija `executors` bo'sh qaytsa lekin `all_executors` mavjud bo'lsa: `all_executors` ichidan foydalanuvchi aytgan ismga ENG O'XSHASH odamni tanla. Masalan "Shaxzod" aytilsa → "Shahzod" ni tanla. Tasdiqlashda aniq ismini ayt: "Shahzod Sobirjonovga topshiraymi?"
-- Baribir hech kim topilmasa: "Topa olmadim, ismni qayta ayting" de.
-- Hech qachon ism o'rniga butunlay boshqa odamni (masalan creator ni) tayinlama.
+- Natija executors bo'sh qaytsa lekin all_executors mavjud bo'lsa: all_executors ichidan foydalanuvchi aytgan ismga HAQIQATAN o'xshash odamni qidir. STT tez-tez qiladigan xatolar: x↔h, s↔sh, o↔o', a↔o, q↔k, j↔dj. Masalan "Shaxzod" → "Shahzod", "Jaxongir" → "Jahongir", "Aziza" → "Azizа".
+- O'xshashini topsang, tasdiqlashda to'liq aniq ismini ayt: "Shahzod Sobirjonovga topshiraymi?"
+- Ikkita bir xil darajada o'xshash odam bo'lsa — ikkalasini aytib, qaysi biri ekanini so'ra.
+- Yaqin o'xshash ism BO'LMASA — hech kimni tanlama, "Topa olmadim, ismni qayta ayting" de.
+- Hech qachon aytilgan ism o'rniga butunlay boshqa odamni tayinlama.
 
 BOSHQA QOIDALAR:
 - Kategoriya: maintenance (ta'mir), finance (moliya), academic (o'qitish), admin (qolgani). Ikkilansang — admin.
@@ -114,12 +118,25 @@ TOOLS = [
 
 # ── OpenAI Realtime session config ────────────────────────────────────────────
 
-def build_session_update() -> dict:
+_WEEKDAYS_UZ = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+
+
+def build_session_update(creator_name: str = "") -> dict:
+    from datetime import date as _date
+    today = _date.today()
+    weekday = _WEEKDAYS_UZ[today.weekday()]
+    context = f"\n\nBugungi sana: {today.strftime('%Y-%m-%d')}, {weekday}."
+    if creator_name:
+        context += (
+            f"\nSen bilan gaplashayotgan kishi: {creator_name}. Vazifani shu kishi yaratayapti."
+            f"\nIjrochi sifatida hech qachon shu kishining o'zini tanlama — vazifani boshqa xodimga topshir."
+            f"\nFaqat foydalanuvchi aniq \"o'zimga topshir\" desa — o'ziga tayinlashga ruxsat."
+        )
     return {
         "type": "session.update",
         "session": {
             "type": "realtime",
-            "instructions": SYSTEM_PROMPT,
+            "instructions": SYSTEM_PROMPT + context,
             "tools": TOOLS,
             "tool_choice": "auto",
         },

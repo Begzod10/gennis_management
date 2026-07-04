@@ -109,7 +109,8 @@ async def voice_realtime_ws(
         ) as openai_ws:
 
             # Send session configuration
-            session_msg = build_session_update()
+            creator_name = f"{creator.name} {creator.surname or ''}".strip()
+            session_msg = build_session_update(creator_name)
             logger.info("Sending session.update: %s", json.dumps(session_msg))
             await openai_ws.send(json.dumps(session_msg))
 
