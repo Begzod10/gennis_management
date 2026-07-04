@@ -17,8 +17,9 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     verify_refresh_token,
-    verify_google_token
+    verify_google_token,
 )
+from app.mobile.auth import _verify_werkzeug
 from app.config import settings
 
 router = APIRouter(
@@ -39,7 +40,7 @@ class UserRegister(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str  # accepts email or username
     password: str
 
 
@@ -165,8 +166,12 @@ def login(
 ):
     """Login with email and password"""
 
+    from sqlalchemy import or_
     user = db.query(models.User).filter(
-        models.User.email == login_data.email
+        or_(
+            models.User.email == login_data.email,
+            models.User.username == login_data.email,
+        )
     ).first()
 
     if not user:
@@ -203,8 +208,15 @@ def login(
             detail="This account was created with Google. Please use Google Sign-In."
         )
 
-    # Verify password
-    if not verify_password(login_data.password, user.hashed_password):
+    # Verify password — bcrypt for native accounts, Werkzeug for migrated gennis users
+    hashed = user.hashed_password or ""
+    is_werkzeug = "$" in hashed and not hashed.startswith("$")
+    password_ok = (
+        _verify_werkzeug(login_data.password, hashed)
+        if is_werkzeug
+        else verify_password(login_data.password, hashed)
+    )
+    if not password_ok:
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= 5:
             user.locked_until = datetime.utcnow() + timedelta(minutes=30)
@@ -222,8 +234,8 @@ def login(
     user.last_login = datetime.utcnow()
     db.commit()
 
-    # Generate tokens
-    token_data = {"sub": user.email, "user_id": user.id}
+    # Generate tokens — use email if present, otherwise username (migrated gennis users)
+    token_data = {"sub": user.email or user.username, "user_id": user.id}
     access_token = create_access_token(
         data=token_data,
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -390,8 +402,15 @@ def change_password(
             detail="Cannot change password for Google OAuth users"
         )
 
-    # Verify old password
-    if not verify_password(password_data.old_password, current_user.hashed_password):
+    # Verify old password — support both bcrypt and migrated Werkzeug hashes
+    hashed = current_user.hashed_password or ""
+    is_werkzeug = "$" in hashed and not hashed.startswith("$")
+    old_ok = (
+        _verify_werkzeug(password_data.old_password, hashed)
+        if is_werkzeug
+        else verify_password(password_data.old_password, hashed)
+    )
+    if not old_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect current password"

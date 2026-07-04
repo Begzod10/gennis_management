@@ -125,11 +125,15 @@ async def gemini_voice_ws(
 
     except WebSocketDisconnect:
         pass
+    except websockets.exceptions.InvalidStatusCode as exc:
+        detail = f"Gemini rejected connection: HTTP {exc.status_code}"
+        logger.error("Gemini handshake failed (creator=%s): %s", creator_id, exc)
+        await _send_json(websocket, {"type": "error", "message": detail})
     except websockets.exceptions.ConnectionClosedError as exc:
-        logger.warning("Gemini Live WS closed unexpectedly: %s", exc)
-        await _send_json(websocket, {"type": "error", "message": "Gemini connection closed"})
+        logger.warning("Gemini Live WS closed (creator=%s): code=%s reason=%s", creator_id, exc.code, exc.reason)
+        await _send_json(websocket, {"type": "error", "message": f"Gemini closed: code={exc.code} reason={exc.reason}"})
     except Exception as exc:
-        logger.error("Gemini voice session error (creator=%s): %s", creator_id, exc)
+        logger.exception("Gemini voice session error (creator=%s): %s", creator_id, exc)
         await _send_json(websocket, {"type": "error", "message": str(exc)})
     finally:
         db.close()
@@ -146,17 +150,23 @@ async def _wait_for_setup(gemini_ws, client_ws: WebSocket, timeout: float = 10.0
     try:
         async with asyncio.timeout(timeout):
             async for raw in gemini_ws:
+                logger.info("Gemini setup msg: %s", raw[:500])
                 event = json.loads(raw)
                 if "setupComplete" in event:
                     return True
-                # Unexpected error during setup
                 if "error" in event:
                     msg = event["error"].get("message", "Setup failed")
-                    await _send_json(client_ws, {"type": "error", "message": msg})
+                    logger.error("Gemini setup error: %s", event["error"])
+                    await _send_json(client_ws, {"type": "error", "message": f"Gemini setup error: {msg}"})
                     return False
+            # for-loop ended — Gemini closed the connection without setupComplete
+            logger.error("Gemini closed connection before setupComplete")
+            await _send_json(client_ws, {"type": "error", "message": "Gemini closed connection during setup"})
     except TimeoutError:
+        logger.error("Gemini setup timed out after %ss", timeout)
         await _send_json(client_ws, {"type": "error", "message": "Gemini setup timed out"})
     except Exception as exc:
+        logger.exception("Gemini setup exception: %s", exc)
         await _send_json(client_ws, {"type": "error", "message": str(exc)})
     return False
 

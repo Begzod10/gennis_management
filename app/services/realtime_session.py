@@ -14,39 +14,28 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Mission, Tag, User, Job
+from app.models import Mission, Tag, User, Job, UserSkill
 
 logger = logging.getLogger(__name__)
 
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are a voice mission assistant for the Gennis management system.
-You help managers, directors, and team leaders create work missions through natural conversation.
+SYSTEM_PROMPT = """Gennis tizimining ovozli vazifa yordamchisi. O'zbek tilida gapir (rus yoki ingliz eshitilsa — o'sha tilda).
 
-LANGUAGE RULE: The user may speak in Uzbek, Russian, or English. You MUST detect and respond in the exact same language they use. Do NOT switch languages.
+JARAYON:
+1. Vazifani eshit.
+2. list_executors chaqir — har bir xodim: ism, lavozim (job), ko'nikmalar (skills).
+3. Vazifaga ENG MOS odamni tanla: skills → job → role tartibida solishtir.
+4. Bitta gap bilan tasdiqlat: "X ga Y ni 3 kunga topshiraymi?"
+5. Ha desa — create_mission chaqir.
+6. ID bilan tasdiqlа.
 
-YOUR WORKFLOW:
-1. Listen to what work the manager describes.
-2. If an executor is mentioned by name, call search_executor_by_name to find them.
-3. If no executor is mentioned, call list_executors and suggest the most relevant person based on the task.
-4. Confirm the details (who, what, deadline) in one short sentence before creating.
-5. Call create_mission to create it.
-6. Confirm success with the mission ID.
-
-RULES:
-- Be concise. No long explanations.
-- Ask only ONE clarifying question at a time.
-- Default deadline: 3 days from today, unless specified otherwise.
-- Default category: "admin", unless the task clearly belongs to another (maintenance, finance, academic, etc.).
-- If the manager mentions multiple tasks in one message, handle them one at a time.
-- Never invent executor names — always look them up first.
-
-EXAMPLES of how you speak:
-- Uzbek: "Topshiriq yaratildi: Ali Karimovga 3 kunlik uy-joy ta'mirlash vazifasi (ID: 42)."
-- Russian: "Задание создано: Алишер Каримов — ремонт офиса, срок 3 дня (ID: 42)."
-- English: "Mission created: Ali Karimov — office repair, due in 3 days (ID: 42)."
-"""
+QOIDALAR:
+- Ism aytilsa: search_executor_by_name ishlat.
+- Muddат aytilmasa: 3 kun.
+- Kategoriya: maintenance(ta'mir), finance(moliya), academic(o'qitish), admin(boshqa).
+- O'zing tanla — savol berma."""
 
 
 # ── Tool definitions ──────────────────────────────────────────────────────────
@@ -55,23 +44,13 @@ TOOLS = [
     {
         "type": "function",
         "name": "list_executors",
-        "description": (
-            "List all active users available as mission executors. "
-            "Returns their id, full name, role, and job title."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
+        "description": "Get all active staff with id, name, role, job title, and skills. Call this first to pick the best executor based on skills match.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
     },
     {
         "type": "function",
         "name": "search_executor_by_name",
-        "description": (
-            "Search for an active user by name (case-insensitive, partial match). "
-            "Use this when the manager mentions someone by name."
-        ),
+        "description": "Find a user by name. Use when manager names a specific person.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -86,7 +65,7 @@ TOOLS = [
     {
         "type": "function",
         "name": "create_mission",
-        "description": "Create a new work mission and assign it to an executor.",
+        "description": "Create and assign a work mission.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -129,46 +108,83 @@ def build_session_update() -> dict:
     return {
         "type": "session.update",
         "session": {
-            "modalities": ["text", "audio"],
+            "type": "realtime",
             "instructions": SYSTEM_PROMPT,
-            "voice": "alloy",
-            "input_audio_format": "pcm16",
-            "output_audio_format": "pcm16",
-            "input_audio_transcription": {"model": "whisper-1"},
-            "turn_detection": {
-                "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 700,
-            },
             "tools": TOOLS,
             "tool_choice": "auto",
         },
     }
 
 
+def build_uzbek_primer() -> dict:
+    """Inject an opening assistant message in Uzbek to lock the response language."""
+    return {
+        "type": "conversation.item.create",
+        "item": {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": (
+                        "Assalomu alaykum! Men Gennis boshqaruv tizimining ovozli yordamchisiman. "
+                        "Vazifa yaratish uchun menga ayting: kim bajaradi, nima qilish kerak va qachon?"
+                    ),
+                }
+            ],
+        },
+    }
+
+
 # ── Function call handlers ────────────────────────────────────────────────────
+
+# Skills every role gets by default — not useful for AI matching between individuals
+_GENERIC_SKILLS_EN = {
+    "Communication", "Teamwork", "Time management", "Organization",
+    "Document management", "Scheduling", "Data entry",
+}
+
+
+def _executor_dict(u: User, db: Session) -> dict:
+    job_name = None
+    if u.job_id:
+        job = db.query(Job).filter(Job.id == u.job_id).first()
+        job_name = job.name if job else None
+    skill_rows = db.query(UserSkill).filter(UserSkill.user_id == u.id).all()
+    # Only include non-generic skills so the AI gets signal, not noise
+    specific = [
+        f"{s.skill_uz}/{s.skill_en}"
+        for s in skill_rows
+        if s.skill_en not in _GENERIC_SKILLS_EN
+    ]
+    entry = {
+        "id": u.id,
+        "name": f"{u.name} {u.surname}".strip(),
+        "role": u.role,
+    }
+    if job_name:
+        entry["job"] = job_name
+    if specific:
+        entry["skills"] = ", ".join(specific)
+    return entry
+
+
+# Roles that assign missions rather than execute them — exclude from executor list
+_NON_EXECUTOR_ROLES = {"owner", "director", "manager"}
+
 
 def handle_list_executors(args: dict, db: Session, creator_id: int) -> str:
     users = (
         db.query(User)
-        .filter(User.deleted == False, User.is_active == True)
+        .filter(
+            User.deleted == False,
+            User.is_active == True,
+            ~User.role.in_(_NON_EXECUTOR_ROLES),
+        )
         .order_by(User.name)
         .all()
     )
-    result = []
-    for u in users:
-        job_name = None
-        if u.job_id:
-            job = db.query(Job).filter(Job.id == u.job_id).first()
-            job_name = job.name if job else None
-        result.append({
-            "id": u.id,
-            "name": f"{u.name} {u.surname}".strip(),
-            "role": u.role,
-            "job": job_name,
-        })
-    return json.dumps({"executors": result}, ensure_ascii=False)
+    return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
 
 
 def handle_search_executor_by_name(args: dict, db: Session, creator_id: int) -> str:
@@ -187,19 +203,7 @@ def handle_search_executor_by_name(args: dict, db: Session, creator_id: int) -> 
         .limit(5)
         .all()
     )
-    result = []
-    for u in users:
-        job_name = None
-        if u.job_id:
-            job = db.query(Job).filter(Job.id == u.job_id).first()
-            job_name = job.name if job else None
-        result.append({
-            "id": u.id,
-            "name": f"{u.name} {u.surname}".strip(),
-            "role": u.role,
-            "job": job_name,
-        })
-    return json.dumps({"executors": result}, ensure_ascii=False)
+    return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
 
 
 _VALID_CATEGORIES = {

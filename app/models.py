@@ -40,6 +40,7 @@ class User(Base):
     last_login = Column(DateTime, nullable=True)
     last_logout_at = Column(DateTime, nullable=True)
     telegram_id = Column(BigInteger, unique=True, nullable=True, index=True)
+    username = Column(String(100), unique=True, nullable=True, index=True)
     salary = Column(BigInteger, nullable=True, default=0)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, nullable=True)
@@ -49,6 +50,8 @@ class User(Base):
     salary_days = relationship("SalaryDay", back_populates="user")
     project_memberships = relationship("ProjectMember", foreign_keys="ProjectMember.user_id", back_populates="user")
     section_memberships = relationship("SectionMember", foreign_keys="SectionMember.user_id", back_populates="user")
+    extra_roles = relationship("UserRole", foreign_keys="UserRole.user_id", back_populates="user")
+    skills = relationship("UserSkill", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def is_locked(self) -> bool:
@@ -56,6 +59,19 @@ class User(Base):
 
 
 Person = User
+
+
+class UserSkill(Base):
+    __tablename__ = "user_skill"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("user.id"), nullable=False)
+    skill_uz = Column(String(100), nullable=False)
+    skill_en = Column(String(100), nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "skill_uz", name="uq_user_skill_uz"),)
+
+    user = relationship("User", back_populates="skills")
 
 
 class SalaryMonth(Base):
@@ -549,3 +565,18 @@ class MobileTelegramLink(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (UniqueConstraint("system", "external_id", name="uq_mobile_tg_user"),)
+
+
+class UserRole(Base):
+    """Additional roles for a user beyond their primary user.role."""
+    __tablename__ = "user_role"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("user.id"), nullable=False, index=True)
+    role = Column(String(50), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("user_id", "role", name="uq_user_role"),)
+
+    user = relationship("User", foreign_keys=[user_id], back_populates="extra_roles")
+

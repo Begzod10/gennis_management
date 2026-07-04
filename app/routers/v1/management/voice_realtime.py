@@ -40,6 +40,7 @@ from app.database import get_db
 from app.models import User
 from app.services.realtime_session import (
     build_session_update,
+    build_uzbek_primer,
     dispatch_function_call,
 )
 
@@ -47,9 +48,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/voice-realtime", tags=["voice-realtime"])
 
-_OPENAI_EXTRA_HEADERS = {
-    "OpenAI-Beta": "realtime=v1",
-}
+_OPENAI_EXTRA_HEADERS: dict = {}
 
 
 async def _send_json(ws, data: dict):
@@ -110,7 +109,13 @@ async def voice_realtime_ws(
         ) as openai_ws:
 
             # Send session configuration
-            await openai_ws.send(json.dumps(build_session_update()))
+            session_msg = build_session_update()
+            logger.info("Sending session.update: %s", json.dumps(session_msg))
+            await openai_ws.send(json.dumps(session_msg))
+
+            # Inject an Uzbek assistant message to lock the response language
+            await openai_ws.send(json.dumps(build_uzbek_primer()))
+
             await _send_client_json(websocket, {"type": "session_ready"})
 
             # Run both directions concurrently; stop when either side disconnects
@@ -134,9 +139,16 @@ async def voice_realtime_ws(
 
     except WebSocketDisconnect:
         pass
+    except websockets.exceptions.InvalidStatusCode as exc:
+        detail = f"OpenAI rejected connection: HTTP {exc.status_code}"
+        logger.error("OpenAI Realtime handshake failed (creator=%s): %s", creator_id, exc)
+        await _send_client_json(websocket, {"type": "error", "message": detail})
     except websockets.exceptions.ConnectionClosedError as exc:
-        logger.warning("OpenAI Realtime WS closed unexpectedly: %s", exc)
-        await _send_client_json(websocket, {"type": "error", "message": "OpenAI connection closed"})
+        logger.warning("OpenAI Realtime WS closed (creator=%s): %s", creator_id, exc)
+        await _send_client_json(websocket, {
+            "type": "error",
+            "message": f"OpenAI connection closed: code={exc.code} reason={exc.reason}",
+        })
     except Exception as exc:
         logger.error("Realtime session error (creator=%s): %s", creator_id, exc)
         await _send_client_json(websocket, {"type": "error", "message": str(exc)})
@@ -151,13 +163,16 @@ async def voice_realtime_ws(
 # ── Client → OpenAI ───────────────────────────────────────────────────────────
 
 async def _client_to_openai(client_ws: WebSocket, openai_ws) -> None:
-    """Forward audio and control messages from the browser to OpenAI."""
+    """Forward audio and control messages from the browser to OpenAI.
+
+    The proxy has built-in server VAD (we see speech_started/stopped/committed
+    events), so we just stream audio and let the proxy handle turn detection.
+    """
     try:
         while True:
             msg = await client_ws.receive()
 
             if "bytes" in msg and msg["bytes"]:
-                # Raw PCM-16 audio chunk
                 audio_b64 = base64.b64encode(msg["bytes"]).decode()
                 await openai_ws.send(json.dumps({
                     "type": "input_audio_buffer.append",
@@ -171,7 +186,6 @@ async def _client_to_openai(client_ws: WebSocket, openai_ws) -> None:
                     continue
 
                 if data.get("type") == "commit":
-                    # Manual end-of-turn
                     await openai_ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
                     await openai_ws.send(json.dumps({"type": "response.create"}))
                 elif data.get("type") == "interrupt":
@@ -198,6 +212,7 @@ async def _openai_to_client(client_ws: WebSocket, openai_ws, db: Session, creato
                 continue
 
             etype = event.get("type", "")
+            logger.warning("OpenAI event: %s | %s", etype, json.dumps(event)[:300])
 
             # ── Voice activity detection ──────────────────────────────────────
             if etype == "input_audio_buffer.speech_started":
@@ -216,7 +231,7 @@ async def _openai_to_client(client_ws: WebSocket, openai_ws, db: Session, creato
                     })
 
             # ── AI transcript (what the AI is saying) ────────────────────────
-            elif etype == "response.audio_transcript.delta":
+            elif etype in ("response.audio_transcript.delta", "response.output_audio_transcript.delta"):
                 delta = event.get("delta", "")
                 if delta:
                     await _send_client_json(client_ws, {
@@ -225,7 +240,7 @@ async def _openai_to_client(client_ws: WebSocket, openai_ws, db: Session, creato
                     })
 
             # ── AI voice audio ────────────────────────────────────────────────
-            elif etype == "response.audio.delta":
+            elif etype in ("response.audio.delta", "response.output_audio.delta"):
                 audio_b64 = event.get("delta", "")
                 if audio_b64:
                     try:
@@ -282,11 +297,27 @@ async def _openai_to_client(client_ws: WebSocket, openai_ws, db: Session, creato
 
                 pending_calls.pop(call_id, None)
 
+            # ── Response failed (e.g. rate_limit_exceeded) ────────────────────
+            elif etype == "response.done":
+                resp = event.get("response", {})
+                if resp.get("status") == "failed":
+                    err = (resp.get("status_details") or {}).get("error", {})
+                    code = err.get("code", "")
+                    msg = err.get("message", "Response failed")
+                    logger.warning("OpenAI response failed: code=%s msg=%s", code, msg)
+                    if code == "rate_limit_exceeded":
+                        await _send_client_json(client_ws, {
+                            "type": "error",
+                            "message": "Rate limit reached — please wait a moment and try again.",
+                        })
+                    else:
+                        await _send_client_json(client_ws, {"type": "error", "message": msg})
+
             # ── Errors ────────────────────────────────────────────────────────
             elif etype == "error":
                 err = event.get("error", {})
                 msg = err.get("message", "Unknown OpenAI error")
-                logger.warning("OpenAI Realtime error: %s", msg)
+                logger.warning("OpenAI Realtime error (full): %s", json.dumps(event))
                 await _send_client_json(client_ws, {"type": "error", "message": msg})
 
     except websockets.exceptions.ConnectionClosed:

@@ -4,6 +4,20 @@ from typing import Optional, List
 from enum import Enum
 
 
+# --- UserSkill ---
+class UserSkillCreate(BaseModel):
+    skill_uz: str
+    skill_en: str
+
+
+class UserSkillOut(BaseModel):
+    id: int
+    skill_uz: str
+    skill_en: str
+
+    model_config = {"from_attributes": True}
+
+
 # --- Job ---
 class JobCreate(BaseModel):
     name: str
@@ -868,5 +882,6 @@ class BranchLoanOut(BaseModel):
     deleted: bool
 
     model_config = {"from_attributes": True}
+
 
 

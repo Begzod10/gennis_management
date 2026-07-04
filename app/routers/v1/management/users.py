@@ -4,8 +4,8 @@ from typing import List
 from datetime import date
 from app.database import get_db
 from sqlalchemy.orm import joinedload
-from app.models import User, Section, Project, ProjectMember, SectionMember, SalaryMonth
-from app.schemas import UserCreate, UserUpdate, UserOut, UserProfileOut, UserProjectOut, UserSectionOut
+from app.models import User, Section, Project, ProjectMember, SectionMember, SalaryMonth, UserSkill
+from app.schemas import UserCreate, UserUpdate, UserOut, UserProfileOut, UserProjectOut, UserSectionOut, UserSkillCreate, UserSkillOut
 from app.core.security import get_password_hash
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -160,4 +160,46 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.deleted = True
+    db.commit()
+
+
+# ── Executor skills ───────────────────────────────────────────────────────────
+
+@router.get("/{user_id}/skills", response_model=List[UserSkillOut])
+def list_user_skills(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id, User.deleted == False).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db.query(UserSkill).filter(UserSkill.user_id == user_id).all()
+
+
+@router.post("/{user_id}/skills", response_model=UserSkillOut, status_code=201)
+def add_user_skill(user_id: int, data: UserSkillCreate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id, User.deleted == False).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    skill_uz = data.skill_uz.strip()
+    skill_en = data.skill_en.strip().lower()
+    if not skill_uz or not skill_en:
+        raise HTTPException(status_code=422, detail="skill_uz and skill_en must not be empty")
+    existing = db.query(UserSkill).filter(
+        UserSkill.user_id == user_id, UserSkill.skill_uz == skill_uz
+    ).first()
+    if existing:
+        return existing
+    skill = UserSkill(user_id=user_id, skill_uz=skill_uz, skill_en=skill_en)
+    db.add(skill)
+    db.commit()
+    db.refresh(skill)
+    return skill
+
+
+@router.delete("/{user_id}/skills/{skill_id}", status_code=204)
+def delete_user_skill(user_id: int, skill_id: int, db: Session = Depends(get_db)):
+    skill = db.query(UserSkill).filter(
+        UserSkill.id == skill_id, UserSkill.user_id == user_id
+    ).first()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    db.delete(skill)
     db.commit()
