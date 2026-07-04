@@ -83,10 +83,6 @@ TOOLS = [
                     "type": "integer",
                     "description": "The user ID of the person who will execute this mission.",
                 },
-                "creator_id": {
-                    "type": "integer",
-                    "description": "The user ID of the person creating this mission (the manager speaking).",
-                },
                 "deadline_days": {
                     "type": "integer",
                     "description": "Number of days from today for the deadline. Default is 3.",
@@ -101,7 +97,7 @@ TOOLS = [
                     ],
                 },
             },
-            "required": ["title", "executor_id", "creator_id", "deadline_days", "category"],
+            "required": ["title", "executor_id", "deadline_days", "category"],
         },
     },
 ]
