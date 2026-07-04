@@ -214,42 +214,75 @@ def handle_list_executors(args: dict, db: Session, creator_id: int) -> str:
     return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
 
 
+def _stt_variants(name: str) -> list[str]:
+    """Generate common STT mis-transcription variants of an Uzbek name."""
+    variants = [name]
+    # x ↔ h (most common: "Shaxzod" ↔ "Shahzod", "Jaxon" ↔ "Jahon")
+    if "x" in name.lower():
+        variants.append(name.lower().replace("x", "h"))
+        variants.append(name.lower().replace("x", "kh"))
+    if "h" in name.lower():
+        variants.append(name.lower().replace("h", "x"))
+    # sh ↔ s
+    if "sh" in name.lower():
+        variants.append(name.lower().replace("sh", "s"))
+    # q ↔ k
+    if "q" in name.lower():
+        variants.append(name.lower().replace("q", "k"))
+    if "k" in name.lower():
+        variants.append(name.lower().replace("k", "q"))
+    return list(dict.fromkeys(v for v in variants if v))  # deduplicate, preserve order
+
+
 def handle_search_executor_by_name(args: dict, db: Session, creator_id: int) -> str:
     name_q = str(args.get("name", "")).strip()
     if not name_q:
         return json.dumps({"executors": [], "error": "name is required"})
 
-    pattern = f"%{name_q}%"
-    users = (
-        db.query(User)
-        .filter(
-            User.deleted == False,
-            User.is_active == True,
-            (User.name.ilike(pattern) | User.surname.ilike(pattern)),
+    def _search(term: str):
+        pattern = f"%{term}%"
+        return (
+            db.query(User)
+            .filter(
+                User.deleted == False,
+                User.is_active == True,
+                (User.name.ilike(pattern) | User.surname.ilike(pattern)),
+            )
+            .limit(5)
+            .all()
         )
-        .limit(5)
-        .all()
-    )
-    if users:
-        return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
 
-    # STT often mis-transcribes Uzbek names — return full list so AI can pick the closest match
-    all_users = (
-        db.query(User)
-        .filter(
-            User.deleted == False,
-            User.is_active == True,
-            ~User.role.in_(_NON_EXECUTOR_ROLES),
-        )
-        .order_by(User.name)
-        .all()
-    )
-    return json.dumps({
-        "executors": [],
-        "not_found": True,
-        "hint": f"No match for '{name_q}'. All available executors listed below — pick the closest name to what was said.",
-        "all_executors": [_executor_dict(u, db) for u in all_users],
-    }, ensure_ascii=False)
+    # 1. Try each word in query (handles full-name queries like "Shahzodbek Omonboyev")
+    for word in name_q.split():
+        if len(word) < 3:
+            continue
+        users = _search(word)
+        if users:
+            return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
+
+    # 2. Try STT transliteration variants of each word
+    for word in name_q.split():
+        if len(word) < 3:
+            continue
+        for variant in _stt_variants(word)[1:]:  # skip first (already tried)
+            users = _search(variant)
+            if users:
+                return json.dumps({
+                    "executors": [_executor_dict(u, db) for u in users],
+                    "note": f"Matched '{variant}' (STT variant of '{word}')",
+                }, ensure_ascii=False)
+
+    # 3. Try progressively shorter prefix of first word
+    first_word = name_q.split()[0] if name_q.split() else name_q
+    for prefix_len in range(max(4, len(first_word) - 2), 3, -1):
+        users = _search(first_word[:prefix_len])
+        if users:
+            return json.dumps({
+                "executors": [_executor_dict(u, db) for u in users],
+                "note": f"Prefix match for '{name_q}'",
+            }, ensure_ascii=False)
+
+    return json.dumps({"executors": [], "error": f"No executor found matching '{name_q}'. Ask the user to repeat the name clearly."}, ensure_ascii=False)
 
 
 _VALID_CATEGORIES = {
