@@ -45,7 +45,7 @@ router = APIRouter(prefix="/gemini-voice", tags=["gemini-voice"])
 
 _GEMINI_WS_BASE = (
     "wss://generativelanguage.googleapis.com"
-    "/ws/google.ai.generativelanguage.v1beta"
+    "/ws/google.ai.generativelanguage.v1alpha"
     ".GenerativeService.BidiGenerateContent"
 )
 
