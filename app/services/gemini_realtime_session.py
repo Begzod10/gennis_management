@@ -137,6 +137,9 @@ def build_setup_message(creator_name: str = "") -> dict:
                         }
                     }
                 },
+                "thinking_config": {
+                    "thinking_budget": 0,
+                },
             },
             "system_instruction": {
                 "parts": [{"text": prompt}]

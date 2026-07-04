@@ -230,6 +230,10 @@ async def _gemini_to_client(client_ws: WebSocket, gemini_ws, db, creator_id: int
                 parts = model_turn.get("parts", [])
 
                 for part in parts:
+                    # Skip internal thinking parts — not for the user
+                    if part.get("thought"):
+                        continue
+
                     inline = part.get("inlineData", {})
                     mime = inline.get("mimeType", "")
                     data_b64 = inline.get("data", "")
