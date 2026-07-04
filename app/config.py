@@ -38,7 +38,7 @@ class Settings:
     OPENAI_REALTIME_URL: str = os.getenv("OPENAI_REALTIME_URL", "wss://api.openai.com/v1/realtime")
     OPENAI_REALTIME_MODEL: str = os.getenv("OPENAI_REALTIME_MODEL", "gpt-4o-realtime-preview")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_REALTIME_MODEL: str = os.getenv("GEMINI_REALTIME_MODEL", "models/gemini-2.0-flash-live-001")
+    GEMINI_REALTIME_MODEL: str = os.getenv("GEMINI_REALTIME_MODEL", "models/gemini-2.5-flash-native-audio-latest")
     GEMINI_VOICE: str = os.getenv("GEMINI_VOICE", "Aoede")
     GEMINI_PROXY: str = os.getenv("GEMINI_PROXY", "")
 
