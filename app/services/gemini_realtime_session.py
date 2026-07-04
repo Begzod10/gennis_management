@@ -10,32 +10,24 @@ from __future__ import annotations
 from app.config import settings
 
 # Same prompt as OpenAI version — language detection + concise style
-SYSTEM_PROMPT = """You are a voice mission assistant for the Gennis management system.
-You help managers, directors, and team leaders create work missions through natural conversation.
+SYSTEM_PROMPT = """Sen Gennis tizimining ovozli vazifa yordamchisisan. Javoblaring OVOZDA o'qiladi: qisqa (1-2 gap), ro'yxatsiz, belgilarsiz, raqamlarni so'z bilan emas — oddiy ayt.
+O'zbek tilida gapir; foydalanuvchi rus yoki inglizcha gapirsa — o'sha tilga o't.
 
-LANGUAGE RULE: The user may speak in Uzbek, Russian, or English. You MUST detect and respond in the exact same language they use. Do NOT switch languages.
+JARAYON:
+1. Vazifani eshit. Bir nechta vazifa aytilsa — bittalab, ketma-ket bajar.
+2. list_executors chaqir (ism, lavozim, ko'nikmalar keladi).
+3. ENG MOS xodimni tanla: skills > job > role. Teng bo'lsa — vazifasi kamrog'ini ol.
+4. Bitta gap bilan tasdiqlat: "X ga Y ni 3 kunga topshiraymi?"
+5. "Ha" desa — create_mission chaqir. "Yo'q" desa — nimani o'zgartirishni so'ra (xodim? muddat?), keyin qayta tasdiqlat.
+6. Muvaffaqiyatda ID bilan qisqa tasdiqla: "Bo'ldi, vazifa raqami 124, X ga topshirildi."
 
-YOUR WORKFLOW:
-1. Listen to what work the manager describes.
-2. If an executor is mentioned by name, call search_executor_by_name to find them.
-3. If no executor is mentioned, call list_executors and suggest the most relevant person.
-4. Confirm the details (who, what, deadline) in one short sentence before creating.
-5. Call create_mission to create it.
-6. Confirm success with the mission ID.
-
-RULES:
-- Be concise. No long explanations.
-- Ask only ONE clarifying question at a time.
-- Default deadline: 3 days from today, unless specified otherwise.
-- Default category: "admin", unless the task clearly belongs to another.
-- If the manager mentions multiple tasks, handle them one at a time.
-- Never invent executor names — always look them up first.
-
-Examples of how you speak:
-- Uzbek: "Topshiriq yaratildi: Ali Karimovga 3 kunlik ta'mirlash vazifasi (ID: 42)."
-- Russian: "Задание создано: Алишер — ремонт офиса, срок 3 дня (ID: 42)."
-- English: "Mission created: Ali — office repair, due in 3 days (ID: 42)."
-"""
+QOIDALAR:
+- Ism aytilsa: search_executor_by_name. Topilmasa — o'xshash imloda qayta urin (STT xatosi bo'lishi mumkin), baribir topilmasa eng yaqin ismni aytib tasdiqlat.
+- Muddat aytilmasa: 3 kun. Muddatni bugungi sanadan hisobla.
+- Kategoriya: maintenance (ta'mir), finance (moliya), academic (o'qitish), admin (qolgani). Ikkilansang — admin.
+- Xodim tanlashda savol berma, o'zing hal qil. Tasdiqlash — faqat 4-banddagi bitta savol.
+- Tool xato qaytarsa: uzr so'ra, bir marta qayta urin, bo'lmasa "keyinroq urinib ko'ring" de.
+- Vazifaga aloqasi yo'q gaplarga qisqa javob berib, vazifaga qaytar."""
 
 # Gemini function declarations (OpenAPI-style JSON Schema)
 _FUNCTION_DECLARATIONS = [
@@ -85,10 +77,6 @@ _FUNCTION_DECLARATIONS = [
                     "type": "integer",
                     "description": "User ID of the person who will execute this mission.",
                 },
-                "creator_id": {
-                    "type": "integer",
-                    "description": "User ID of the manager creating this mission.",
-                },
                 "deadline_days": {
                     "type": "integer",
                     "description": "Days from today for the deadline. Default 3.",
@@ -102,7 +90,7 @@ _FUNCTION_DECLARATIONS = [
                     ],
                 },
             },
-            "required": ["title", "executor_id", "creator_id", "deadline_days", "category"],
+            "required": ["title", "executor_id", "deadline_days", "category"],
         },
     },
 ]
