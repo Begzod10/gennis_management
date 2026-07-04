@@ -15,6 +15,8 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.models import Mission, Tag, User, Job, UserSkill
+from app.tasks import send_telegram_notification
+from app.services.telegram import tpl_assigned
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +259,15 @@ def handle_create_mission(args: dict, db: Session, creator_id: int) -> str:
 
     executor_name = f"{executor.name} {executor.surname}".strip()
     logger.info("Voice mission created: id=%s title=%s executor=%s", mission.id, title, executor_name)
+
+    creator = db.query(User).filter(User.id == _creator_id).first()
+    creator_name = f"{creator.name} {creator.surname}".strip() if creator else "AI Assistant"
+    if executor.telegram_id:
+        send_telegram_notification.delay(
+            executor.telegram_id,
+            tpl_assigned(executor_name, title, deadline, creator_name),
+        )
+
     return json.dumps({
         "success": True,
         "mission_id": mission.id,
