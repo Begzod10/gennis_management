@@ -42,9 +42,9 @@ MUDDAT QOIDASI (MUHIM):
 
 ISM QOIDASI (MUHIM):
 - Ism aytilsa: search_executor_by_name chaqir.
-- Natija topilmasa: xuddi shu ismni boshqa imloda 1-2 marta qayta qidir (STT xatosi bo'lishi mumkin: "Sardor" → "Sардор", "Ikromov" → "Ikramov").
-- Baribir topilmasa: "Topa olmadim, ismni qayta ayting" de — o'z-o'zidan boshqa odamni tanla.
-- Hech qachon ism o'rniga boshqa odamni tayinlama.
+- Natija `executors` bo'sh qaytsa lekin `all_executors` mavjud bo'lsa: `all_executors` ichidan foydalanuvchi aytgan ismga ENG O'XSHASH odamni tanla. Masalan "Shaxzod" aytilsa → "Shahzod" ni tanla. Tasdiqlashda aniq ismini ayt: "Shahzod Sobirjonovga topshiraymi?"
+- Baribir hech kim topilmasa: "Topa olmadim, ismni qayta ayting" de.
+- Hech qachon ism o'rniga butunlay boshqa odamni (masalan creator ni) tayinlama.
 
 BOSHQA QOIDALAR:
 - Kategoriya: maintenance (ta'mir), finance (moliya), academic (o'qitish), admin (qolgani). Ikkilansang — admin.
@@ -213,7 +213,26 @@ def handle_search_executor_by_name(args: dict, db: Session, creator_id: int) -> 
         .limit(5)
         .all()
     )
-    return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
+    if users:
+        return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
+
+    # STT often mis-transcribes Uzbek names — return full list so AI can pick the closest match
+    all_users = (
+        db.query(User)
+        .filter(
+            User.deleted == False,
+            User.is_active == True,
+            ~User.role.in_(_NON_EXECUTOR_ROLES),
+        )
+        .order_by(User.name)
+        .all()
+    )
+    return json.dumps({
+        "executors": [],
+        "not_found": True,
+        "hint": f"No match for '{name_q}'. All available executors listed below — pick the closest name to what was said.",
+        "all_executors": [_executor_dict(u, db) for u in all_users],
+    }, ensure_ascii=False)
 
 
 _VALID_CATEGORIES = {

@@ -29,9 +29,9 @@ MUDDAT QOIDASI (MUHIM):
 
 ISM QOIDASI (MUHIM):
 - Ism aytilsa: search_executor_by_name chaqir.
-- Natija topilmasa: xuddi shu ismni boshqa imloda 1-2 marta qayta qidir (STT xatosi bo'lishi mumkin: "Sardor" → "Sардор", "Ikromov" → "Ikramov").
-- Baribir topilmasa: "Topa olmadim, ismni qayta ayting" de — o'z-o'zidan boshqa odamni tanla.
-- Hech qachon ism o'rniga boshqa odamni tayinlama.
+- Natija `executors` bo'sh qaytsa lekin `all_executors` mavjud bo'lsa: `all_executors` ichidan foydalanuvchi aytgan ismga ENG O'XSHASH odamni tanla. Masalan "Shaxzod" aytilsa → "Shahzod" ni tanla. Tasdiqlashda aniq ismini ayt: "Shahzod Sobirjonovga topshiraymi?"
+- Baribir hech kim topilmasa: "Topa olmadim, ismni qayta ayting" de.
+- Hech qachon ism o'rniga butunlay boshqa odamni (masalan creator ni) tayinlama.
 
 BOSHQA QOIDALAR:
 - Kategoriya: maintenance (ta'mir), finance (moliya), academic (o'qitish), admin (qolgani). Ikkilansang — admin.
