@@ -275,6 +275,7 @@ async def _gemini_to_client(client_ws: WebSocket, gemini_ws, db, creator_id: int
             tool_call = event.get("toolCall", {})
             fn_calls = tool_call.get("functionCalls", [])
             if fn_calls:
+                logger.warning("Gemini toolCall received: %s", [fc.get("name") for fc in fn_calls])
                 responses = []
                 for fc in fn_calls:
                     call_id = fc.get("id", "")
@@ -282,7 +283,9 @@ async def _gemini_to_client(client_ws: WebSocket, gemini_ws, db, creator_id: int
                     args = fc.get("args", {})
                     args_str = json.dumps(args) if isinstance(args, dict) else str(args)
 
+                    logger.warning("Dispatching %s args=%s", fn_name, args_str[:200])
                     result_str = dispatch_function_call(fn_name, args_str, db, creator_id)
+                    logger.warning("Result for %s: %s", fn_name, result_str[:200])
 
                     # Notify client if a mission was created
                     if fn_name == "create_mission":
