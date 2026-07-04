@@ -83,13 +83,13 @@ async def gemini_voice_ws(
         return
 
     gemini_url = f"{_GEMINI_WS_BASE}?key={settings.GEMINI_API_KEY}"
+    _proxy = settings.GEMINI_PROXY or settings.TELEGRAM_PROXY or None
 
     try:
-        async with websockets.connect(
-            gemini_url,
-            ping_interval=20,
-            ping_timeout=20,
-        ) as gemini_ws:
+        connect_kwargs = dict(ping_interval=20, ping_timeout=20)
+        if _proxy:
+            connect_kwargs["proxy"] = _proxy
+        async with websockets.connect(gemini_url, **connect_kwargs) as gemini_ws:
 
             # First message: session setup
             await gemini_ws.send(json.dumps(build_setup_message()))

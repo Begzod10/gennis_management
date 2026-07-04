@@ -40,6 +40,7 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_REALTIME_MODEL: str = os.getenv("GEMINI_REALTIME_MODEL", "models/gemini-2.0-flash-live-001")
     GEMINI_VOICE: str = os.getenv("GEMINI_VOICE", "Aoede")
+    GEMINI_PROXY: str = os.getenv("GEMINI_PROXY", "")
 
 
 settings = Settings()
