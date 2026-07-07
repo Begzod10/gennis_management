@@ -235,15 +235,28 @@ async def telegram_webhook(
 
         if result["ok"]:
             import json as _json
-            _redis.setex(f"tg_voice_pending:{chat_id}", 120, _json.dumps(result))
-            deadline_hint = result["deadline_days"]
-            reply = (
-                f"🎯 <b>{result['title']}</b>\n"
-                f"👤 Ijrochi: <b>{result['executor_name']}</b>\n"
-                f"🔖 Kategoriya: {result['category']}\n\n"
-                f"📅 Muddat necha kun? (standart: <b>{deadline_hint}</b>)\n"
-                f"<i>Raqam yuboring yoki {deadline_hint} uchun shu raqamni yuboring</i>"
-            )
+            deadline_days = result["deadline_days"]
+            if result.get("deadline_explicit"):
+                # Deadline was mentioned in voice → create immediately
+                created = create_mission_from_pending(result, deadline_days, db)
+                reply = (
+                    f"✅ <b>Vazifa yaratildi!</b>\n\n"
+                    f"📋 {created['title']}\n"
+                    f"👤 Ijrochi: <b>{created['executor']}</b>\n"
+                    f"📅 Muddat: {created['deadline']}\n"
+                    f"🔖 Kategoriya: {created['category']}\n"
+                    f"🆔 ID: <code>{created['mission_id']}</code>"
+                )
+            else:
+                # No deadline in voice → ask user
+                _redis.setex(f"tg_voice_pending:{chat_id}", 120, _json.dumps(result))
+                reply = (
+                    f"🎯 <b>{result['title']}</b>\n"
+                    f"👤 Ijrochi: <b>{result['executor_name']}</b>\n"
+                    f"🔖 Kategoriya: {result['category']}\n\n"
+                    f"📅 Muddat necha kun?\n"
+                    f"<i>Raqam yuboring (standart: <b>{deadline_days}</b>)</i>"
+                )
         else:
             reply = "❌ " + result.get("error", "Noma'lum xato")
             if result.get("transcript"):
