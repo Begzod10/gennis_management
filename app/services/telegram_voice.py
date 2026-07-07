@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Mission, User
+from app.tasks import send_telegram_notification
+from app.services.telegram import tpl_assigned
 from app.services.realtime_session import (
     _executor_dict,
     _NON_EXECUTOR_ROLES,
@@ -193,6 +195,14 @@ async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
 
     executor_name = f"{executor.name} {executor.surname or ''}".strip()
     logger.info("Telegram voice mission created: id=%s title=%s executor=%s", mission.id, title, executor_name)
+
+    if executor.telegram_id:
+        creator_name = f"{creator.name} {creator.surname or ''}".strip() if creator else "AI Assistant"
+        send_telegram_notification.delay(
+            executor.telegram_id,
+            tpl_assigned(executor_name, title, deadline, creator_name),
+        )
+
     return {
         "ok": True,
         "mission_id": mission.id,
