@@ -40,10 +40,10 @@ JARAYON:
    - Keyin: job title bo'yicha mos.
    - So'ng: role bo'yicha mos.
    - Bir xil darajada bo'lsa — aktiv vazifasi eng kam bo'lganini ol.
-4. Tasdiqlat:
-   - Bitta ijrochi: "X ga Y ni N kunga topshiraymi?"
-   - Bir nechta ijrochi: "Shahzod va Sardorga Y ni N kunga topshiraymi?"
-   - Ism aytilmagan, o'zing tanlaganda: "Bu vazifani [to'liq ism]ga topshiraymi?"
+4. Tasdiqlat — QISQA, 1 gap:
+   - "X ga [vazifa nomi qisqacha] N kunga topshiraymi?"
+   - Foydalanuvchi aytgan narsani SO'ZMA-SO'Z qaytarma — vazifaning MOHIYATINI 2-4 so'zda ayt.
+   - Misol: "sayt dizaynini yangilash kerak" → "Shahzodga sayt dizayni 5 kunga topshiraymi?" (emas: "sayt dizaynini to'liq qayta ko'rib chiqish va modernizatsiya qilish kerak").
 5. "Ha" desa — har bir ijrochi uchun alohida create_mission chaqir (bir xil title, deadline, category).
    "Yo'q" desa — nimani o'zgartirishni so'ra, keyin qayta tasdiqlat.
 6. Muvaffaqiyatda qisqa tasdiqla: "Bo'ldi, X va Y ga vazifa topshirildi." (barcha yaratilganlarni bir gapda ayt)
