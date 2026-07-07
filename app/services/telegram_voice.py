@@ -40,8 +40,10 @@ _EXTRACT_SYSTEM = (
     '{"title":"short action title","description":"detail or null",'
     '"executor_id":<int from list or null>,"deadline_days":<int default 3>,'
     '"category":"academic|admin|student|report|meeting|marketing|maintenance|finance"}\n'
-    "Rules: match executor by name first, then skill, then job, then role. "
-    'Deadline hints: "3 kun"=3, "bir hafta"=7, "2 days"=2.'
+    "Rules:\n"
+    "- title: write in the SAME language as the transcription (Uzbek if Uzbek, Russian if Russian). Keep it short (3-6 words).\n"
+    "- match executor by name first, then skill, then job, then role.\n"
+    'Deadline hints: "3 kun"=3, "bir hafta"=7, "2 days"=2, "ertaga"=1.'
 )
 
 _VALID_CATEGORIES = {
@@ -76,10 +78,10 @@ async def _transcribe(audio: bytes, filename: str) -> str:
                 "model": (None, settings.OPENAI_WHISPER_MODEL),
                 "response_format": (None, "json"),
                 "prompt": (None,
-                    "Gennis, Turon, sayt, dizayn, o'zgartirish, tekshirish, topshiriq, "
-                    "vazifa, loyiha, tuzatish, yangilash, tayyorlash, yuborish, ko'rib chiqish, "
-                    "hisobot, taqdimot, muddati, hafta, kun, oy, "
-                    "Shahzod, Sardor, Jasur, Begzod, Aziza, Nilufar, Jahongir, Alisher"),
+                    "Gennis, Turon, sayt, dizayn, o'zgartirish, tog'irlash, tuzatish, tekshirish, "
+                    "topshiriq, vazifa, loyiha, yangilash, tayyorlash, yuborish, ko'rib chiqish, "
+                    "hisobot, taqdimot, muddati, hafta, kun, oy, ertaga, "
+                    "Shahzod, Sardor, Jasur, Begzod, Aziza, Nilufar, Jahongir, Alisher, Sherzod"),
             },
         )
         r.raise_for_status()
