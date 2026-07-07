@@ -75,7 +75,6 @@ async def _transcribe(audio: bytes, filename: str) -> str:
                 "file": (filename, audio, "audio/ogg"),
                 "model": (None, settings.OPENAI_WHISPER_MODEL),
                 "response_format": (None, "json"),
-                "language": (None, "uz"),
             },
         )
         r.raise_for_status()
