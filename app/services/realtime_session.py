@@ -18,6 +18,52 @@ from app.models import Mission, Tag, User, Job, UserSkill
 from app.tasks import send_telegram_notification
 from app.services.telegram import tpl_assigned
 
+# ── Role-based assignment rules (mirrors missions.py) ─────────────────────────
+_OWNER_ROLES = {"owner"}
+
+_ROLE_CAN_ASSIGN: dict[str, set[str]] = {
+    "super_admin":      {"director", "dept_head", "project_manager"},
+    "director":         {"deputy_director", "dept_head"},
+    "ad":               {"teacher", "subject_council", "coordinator"},
+    "dept_head":        {"team_lead", "specialist"},
+    "deputy_director":  {"class_teacher", "psychologist", "student_president", "sardor"},
+    "team_lead":        set(),
+    "project_manager":  set(),
+    "employee":         {"employee"},
+}
+
+# Roles that require a project/section context — voice cannot satisfy that
+_PROJECT_SCOPED_ROLES = {"manager", "team_lead", "project_manager"}
+
+_ROLE_PRIORITY = (
+    "super_admin", "director", "ad", "dept_head", "deputy_director",
+    "manager", "team_lead", "project_manager", "employee",
+)
+
+
+def _effective_role(user: User) -> str:
+    extra = {r.role for r in user.extra_roles} if getattr(user, "extra_roles", None) else set()
+    all_roles = {user.role} | extra
+    for r in _ROLE_PRIORITY:
+        if r in all_roles:
+            return r
+    return user.role
+
+
+def _check_voice_assignment(creator: User, executor: User) -> str | None:
+    """Return an error string if creator is not allowed to assign to executor, else None."""
+    if creator.id == executor.id:
+        return None
+    if creator.role in _OWNER_ROLES:
+        return None
+    creator_role = _effective_role(creator)
+    if creator_role in _PROJECT_SCOPED_ROLES:
+        return f"Your role ('{creator_role}') requires project context for assignments — not supported in voice mode."
+    allowed = _ROLE_CAN_ASSIGN.get(creator_role, set())
+    if executor.role not in allowed:
+        return f"Your role ('{creator_role}') is not allowed to assign missions to role '{executor.role}'."
+    return None
+
 logger = logging.getLogger(__name__)
 
 
@@ -215,16 +261,25 @@ _NON_EXECUTOR_ROLES = {"owner", "director", "manager"}
 
 
 def handle_list_executors(args: dict, db: Session, creator_id: int) -> str:
-    users = (
+    creator = db.query(User).filter(User.id == creator_id, User.deleted == False).first()
+
+    base = (
         db.query(User)
-        .filter(
-            User.deleted == False,
-            User.is_active == True,
-            ~User.role.in_(_NON_EXECUTOR_ROLES),
-        )
+        .filter(User.deleted == False, User.is_active == True)
         .order_by(User.name)
-        .all()
     )
+
+    if creator and creator.role not in _OWNER_ROLES:
+        creator_role = _effective_role(creator)
+        if creator_role in _PROJECT_SCOPED_ROLES:
+            # project-scoped roles can only self-assign via voice
+            users = [creator] if creator else []
+        else:
+            allowed_roles = _ROLE_CAN_ASSIGN.get(creator_role, set())
+            users = base.filter(User.role.in_(allowed_roles | {creator.role})).all()
+    else:
+        users = base.filter(~User.role.in_(_NON_EXECUTOR_ROLES)).all()
+
     return json.dumps({"executors": [_executor_dict(u, db) for u in users]}, ensure_ascii=False)
 
 
@@ -253,18 +308,23 @@ def handle_search_executor_by_name(args: dict, db: Session, creator_id: int) -> 
     if not name_q:
         return json.dumps({"executors": [], "error": "name is required"})
 
+    creator = db.query(User).filter(User.id == creator_id, User.deleted == False).first()
+    allowed_roles: set[str] | None = None
+    if creator and creator.role not in _OWNER_ROLES:
+        creator_role = _effective_role(creator)
+        if creator_role not in _PROJECT_SCOPED_ROLES:
+            allowed_roles = _ROLE_CAN_ASSIGN.get(creator_role, set()) | {creator.role}
+
     def _search(term: str):
         pattern = f"%{term}%"
-        return (
-            db.query(User)
-            .filter(
-                User.deleted == False,
-                User.is_active == True,
-                (User.name.ilike(pattern) | User.surname.ilike(pattern)),
-            )
-            .limit(5)
-            .all()
+        q = db.query(User).filter(
+            User.deleted == False,
+            User.is_active == True,
+            (User.name.ilike(pattern) | User.surname.ilike(pattern)),
         )
+        if allowed_roles is not None:
+            q = q.filter(User.role.in_(allowed_roles))
+        return q.limit(5).all()
 
     # 1. Try each word in query (handles full-name queries like "Shahzodbek Omonboyev")
     for word in name_q.split():
@@ -319,6 +379,12 @@ def handle_create_mission(args: dict, db: Session, creator_id: int) -> str:
     executor = db.query(User).filter(User.id == executor_id, User.deleted == False).first()
     if not executor:
         return json.dumps({"error": f"Executor with id {executor_id} not found"})
+
+    creator_user = db.query(User).filter(User.id == creator_id, User.deleted == False).first()
+    if creator_user:
+        err = _check_voice_assignment(creator_user, executor)
+        if err:
+            return json.dumps({"error": err})
 
     deadline_days = max(1, int(args.get("deadline_days", 3)))
     deadline = date.today() + timedelta(days=deadline_days)
