@@ -75,6 +75,11 @@ async def _transcribe(audio: bytes, filename: str) -> str:
                 "file": (filename, audio, "audio/ogg"),
                 "model": (None, settings.OPENAI_WHISPER_MODEL),
                 "response_format": (None, "json"),
+                "prompt": (None,
+                    "Gennis, Turon, sayt, dizayn, o'zgartirish, tekshirish, topshiriq, "
+                    "vazifa, loyiha, tuzatish, yangilash, tayyorlash, yuborish, ko'rib chiqish, "
+                    "hisobot, taqdimot, muddati, hafta, kun, oy, "
+                    "Shahzod, Sardor, Jasur, Begzod, Aziza, Nilufar, Jahongir, Alisher"),
             },
         )
         r.raise_for_status()
