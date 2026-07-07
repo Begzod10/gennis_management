@@ -118,12 +118,11 @@ async def _extract(transcript: str, executors: list) -> dict:
         return json.loads(r.json()["choices"][0]["message"]["content"])
 
 
-async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> dict:
-    """Full pipeline: download → transcribe → extract → create mission."""
+async def prepare_telegram_voice(file_id: str, creator_id: int, db: Session) -> dict:
+    """Download → transcribe → extract. Returns pending dict WITHOUT creating mission."""
     if not settings.OPENAI_API_KEY:
         return {"ok": False, "error": "OPENAI_API_KEY sozlanmagan"}
 
-    # 1. Download & transcribe
     try:
         audio, filename = await _download_voice(file_id)
         transcript = await _transcribe(audio, filename)
@@ -133,9 +132,7 @@ async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
 
     logger.info("Telegram voice transcript (creator=%s): %s", creator_id, transcript)
 
-    # 2. Build executor list filtered by creator's role permissions
     creator = db.query(User).filter(User.id == creator_id, User.deleted == False).first()
-
     base = db.query(User).filter(User.deleted == False, User.is_active == True).order_by(User.name)
 
     if creator and creator.role not in _OWNER_ROLES:
@@ -150,7 +147,6 @@ async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
 
     executors = [_executor_dict(u, db) for u in users]
 
-    # 3. Extract mission fields
     try:
         extracted = await _extract(transcript, executors)
     except Exception as exc:
@@ -174,17 +170,37 @@ async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
         if err:
             return {"ok": False, "error": err, "transcript": transcript}
 
-    # 4. Create mission
     deadline_days = max(1, int(extracted.get("deadline_days") or 3))
-    deadline = date.today() + timedelta(days=deadline_days)
     category = str(extracted.get("category", "admin")).lower()
     if category not in _VALID_CATEGORIES:
         category = "admin"
+    executor_name = f"{executor.name} {executor.surname or ''}".strip()
+
+    return {
+        "ok": True,
+        "pending": True,
+        "title": title,
+        "description": extracted.get("description") or None,
+        "executor_id": executor_id,
+        "executor_name": executor_name,
+        "creator_id": creator_id,
+        "deadline_days": deadline_days,
+        "deadline_explicit": deadline_days != 3,
+        "category": category,
+        "transcript": transcript,
+    }
+
+
+def create_mission_from_pending(pending: dict, deadline_days: int, db: Session) -> dict:
+    """Create mission from a pending dict (returned by prepare_telegram_voice)."""
+    deadline = date.today() + timedelta(days=deadline_days)
+    creator_id = pending["creator_id"]
+    executor_id = pending["executor_id"]
 
     mission = Mission(
-        title=title,
-        description=extracted.get("description") or None,
-        category=category,
+        title=pending["title"],
+        description=pending.get("description"),
+        category=pending["category"],
         executor_id=executor_id,
         creator_id=creator_id,
         deadline=deadline,
@@ -200,22 +216,23 @@ async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
     db.commit()
     db.refresh(mission)
 
-    executor_name = f"{executor.name} {executor.surname or ''}".strip()
-    logger.info("Telegram voice mission created: id=%s title=%s executor=%s", mission.id, title, executor_name)
+    executor_name = pending["executor_name"]
+    logger.info("Telegram voice mission created: id=%s title=%s executor=%s", mission.id, pending["title"], executor_name)
 
-    if executor.telegram_id:
+    creator = db.query(User).filter(User.id == creator_id, User.deleted == False).first()
+    executor = db.query(User).filter(User.id == executor_id, User.deleted == False).first()
+    if executor and executor.telegram_id:
         creator_name = f"{creator.name} {creator.surname or ''}".strip() if creator else "AI Assistant"
         send_telegram_notification.delay(
             executor.telegram_id,
-            tpl_assigned(executor_name, title, deadline, creator_name),
+            tpl_assigned(executor_name, pending["title"], deadline, creator_name),
         )
 
     return {
         "ok": True,
         "mission_id": mission.id,
-        "title": title,
+        "title": pending["title"],
         "executor": executor_name,
         "deadline": deadline.isoformat(),
-        "category": category,
-        "transcript": transcript,
+        "category": pending["category"],
     }
