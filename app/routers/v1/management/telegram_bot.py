@@ -201,55 +201,7 @@ async def telegram_webhook(
         if pending_json:
             pending = _json.loads(pending_json)
 
-            # Case 1: waiting for executor name
-            if pending.get("needs_executor"):
-                name_query = text.strip()
-                matched = db.query(User).filter(
-                    User.deleted == False,
-                    User.is_active == True,
-                    (User.name.ilike(f"%{name_query}%") | User.surname.ilike(f"%{name_query}%")),
-                ).all()
-                if not matched:
-                    send_telegram_notification.delay(
-                        chat_id,
-                        f"❌ <b>{name_query}</b> ismli xodim topilmadi.\nQayta ismni yuboring:",
-                    )
-                    return {"ok": True}
-                if len(matched) > 1:
-                    names = "\n".join(f"• {u.name} {u.surname or ''}" for u in matched[:5])
-                    send_telegram_notification.delay(
-                        chat_id,
-                        f"Bir nechta mos topildi, aniqroq yozing:\n{names}",
-                    )
-                    return {"ok": True}
-                executor = matched[0]
-                executor_name = f"{executor.name} {executor.surname or ''}".strip()
-                pending["needs_executor"] = False
-                pending["executor_id"] = executor.id
-                pending["executor_name"] = executor_name
-                # Now check deadline
-                if pending.get("deadline_explicit"):
-                    result = create_mission_from_pending(pending, pending["deadline_days"], db)
-                    _redis.delete(pending_key)
-                    reply = (
-                        f"✅ <b>Vazifa yaratildi!</b>\n\n"
-                        f"📋 {result['title']}\n"
-                        f"👤 Ijrochi: <b>{result['executor']}</b>\n"
-                        f"📅 Muddat: {result['deadline']}\n"
-                        f"🔖 Kategoriya: {result['category']}\n"
-                        f"🆔 ID: <code>{result['mission_id']}</code>"
-                    )
-                else:
-                    _redis.setex(pending_key, 120, _json.dumps(pending))
-                    reply = (
-                        f"👤 Ijrochi: <b>{executor_name}</b>\n\n"
-                        f"📅 Muddat necha kun?\n"
-                        f"<i>Raqam yuboring (standart: <b>{pending['deadline_days']}</b>)</i>"
-                    )
-                send_telegram_notification.delay(chat_id, reply)
-                return {"ok": True}
-
-            # Case 2: waiting for deadline (number)
+            # Waiting for deadline (number)
             if text.strip().isdigit():
                 deadline_days = max(1, int(text.strip()))
                 result = create_mission_from_pending(pending, deadline_days, db)
@@ -288,16 +240,7 @@ async def telegram_webhook(
             import json as _json
             deadline_days = result["deadline_days"]
 
-            if result.get("needs_executor"):
-                # GPT couldn't identify executor → ask user
-                _redis.setex(f"tg_voice_pending:{chat_id}", 120, _json.dumps(result))
-                reply = (
-                    f"🎯 <b>{result['title']}</b>\n"
-                    f"🔖 Kategoriya: {result['category']}\n\n"
-                    f"👤 Ijrochi aniqlanmadi. Kim bajarsin?\n"
-                    f"<i>Xodim ismini yuboring</i>"
-                )
-            elif result.get("deadline_explicit"):
+            if result.get("deadline_explicit"):
                 # Deadline was mentioned in voice → create immediately
                 created = create_mission_from_pending(result, deadline_days, db)
                 reply = (

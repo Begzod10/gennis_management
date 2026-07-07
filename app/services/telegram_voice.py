@@ -42,8 +42,16 @@ _EXTRACT_SYSTEM = (
     '"category":"academic|admin|student|report|meeting|marketing|maintenance|finance"}\n'
     "Rules:\n"
     "- title: write in the SAME language as the transcription (Uzbek if Uzbek, Russian if Russian). Keep it short (3-6 words).\n"
-    "- match executor by name first, then skill, then job, then role.\n"
+    "- executor_id MUST always be set. NEVER return null — if no name is mentioned, pick whoever has the most relevant skills or job title for this task.\n"
+    "- match priority: 1) name mentioned 2) skills match 3) job title match 4) role match.\n"
     'Deadline hints: "3 kun"=3, "bir hafta"=7, "2 days"=2, "ertaga"=1.'
+)
+
+_SKILL_PICK_SYSTEM = (
+    "You are a task assignment assistant. Given a task title and a list of staff, "
+    "pick the single best person to do the task based on their skills and job title. "
+    "Return ONLY valid JSON: {\"executor_id\": <int>}\n"
+    "Rules: match skills first, then job title, then role. ALWAYS return an executor_id — never null."
 )
 
 _VALID_CATEGORIES = {
@@ -118,6 +126,38 @@ async def _extract(transcript: str, executors: list) -> dict:
         return json.loads(r.json()["choices"][0]["message"]["content"])
 
 
+async def _pick_executor_by_skill(title: str, executors: list) -> int | None:
+    """Fallback: ask GPT to pick the best executor purely by skill/job match."""
+    base = settings.OPENAI_BASE_URL.rstrip("/")
+    payload = {
+        "model": settings.OPENAI_MODEL,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": _SKILL_PICK_SYSTEM},
+            {
+                "role": "user",
+                "content": (
+                    f"Task: {title}\n\n"
+                    f"Staff:\n{json.dumps(executors, ensure_ascii=False)}"
+                ),
+            },
+        ],
+    }
+    async with httpx.AsyncClient(timeout=20.0, trust_env=False) as client:
+        r = await client.post(
+            f"{base}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        r.raise_for_status()
+        data = json.loads(r.json()["choices"][0]["message"]["content"])
+        return data.get("executor_id")
+
+
 async def prepare_telegram_voice(file_id: str, creator_id: int, db: Session) -> dict:
     """Download → transcribe → extract. Returns pending dict WITHOUT creating mission."""
     if not settings.OPENAI_API_KEY:
@@ -163,28 +203,17 @@ async def prepare_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
     if executor_id:
         executor = db.query(User).filter(User.id == executor_id, User.deleted == False).first()
 
+    if not executor and executors:
+        # GPT didn't pick one — try a focused skill-based pick
+        try:
+            fallback_id = await _pick_executor_by_skill(title, executors)
+            if fallback_id:
+                executor = db.query(User).filter(User.id == fallback_id, User.deleted == False).first()
+        except Exception as exc:
+            logger.warning("Skill-based executor fallback failed: %s", exc)
+
     if not executor:
-        # Return a partial pending so the bot can ask who should do this task
-        deadline_days_raw = max(1, int(extracted.get("deadline_days") or 3))
-        category_raw = str(extracted.get("category", "admin")).lower()
-        if category_raw not in _VALID_CATEGORIES:
-            category_raw = "admin"
-        executor_list = [
-            {"id": u["id"], "name": u["name"]}
-            for u in executors
-        ]
-        return {
-            "ok": True,
-            "needs_executor": True,
-            "title": title,
-            "description": extracted.get("description") or None,
-            "creator_id": creator_id,
-            "deadline_days": deadline_days_raw,
-            "deadline_explicit": deadline_days_raw != 3,
-            "category": category_raw,
-            "transcript": transcript,
-            "executor_list": executor_list,
-        }
+        return {"ok": False, "error": "Ijrochi aniqlanmadi", "transcript": transcript, "title": title}
 
     if creator:
         err = _check_voice_assignment(creator, executor)
