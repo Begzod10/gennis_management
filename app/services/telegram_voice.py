@@ -18,7 +18,15 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Mission, User
-from app.services.realtime_session import _executor_dict, _NON_EXECUTOR_ROLES
+from app.services.realtime_session import (
+    _executor_dict,
+    _NON_EXECUTOR_ROLES,
+    _check_voice_assignment,
+    _effective_role,
+    _OWNER_ROLES,
+    _ROLE_CAN_ASSIGN,
+    _PROJECT_SCOPED_ROLES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,17 +124,21 @@ async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
 
     logger.info("Telegram voice transcript (creator=%s): %s", creator_id, transcript)
 
-    # 2. Build executor list
-    users = (
-        db.query(User)
-        .filter(
-            User.deleted == False,
-            User.is_active == True,
-            ~User.role.in_(_NON_EXECUTOR_ROLES),
-        )
-        .order_by(User.name)
-        .all()
-    )
+    # 2. Build executor list filtered by creator's role permissions
+    creator = db.query(User).filter(User.id == creator_id, User.deleted == False).first()
+
+    base = db.query(User).filter(User.deleted == False, User.is_active == True).order_by(User.name)
+
+    if creator and creator.role not in _OWNER_ROLES:
+        creator_role = _effective_role(creator)
+        if creator_role in _PROJECT_SCOPED_ROLES:
+            users = [creator]
+        else:
+            allowed_roles = _ROLE_CAN_ASSIGN.get(creator_role, set()) | {creator.role}
+            users = base.filter(User.role.in_(allowed_roles)).all()
+    else:
+        users = base.filter(~User.role.in_(_NON_EXECUTOR_ROLES)).all()
+
     executors = [_executor_dict(u, db) for u in users]
 
     # 3. Extract mission fields
@@ -147,6 +159,11 @@ async def process_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
     executor = db.query(User).filter(User.id == executor_id, User.deleted == False).first()
     if not executor:
         return {"ok": False, "error": f"Ijrochi topilmadi (id={executor_id})", "transcript": transcript}
+
+    if creator:
+        err = _check_voice_assignment(creator, executor)
+        if err:
+            return {"ok": False, "error": err, "transcript": transcript}
 
     # 4. Create mission
     deadline_days = max(1, int(extracted.get("deadline_days") or 3))
