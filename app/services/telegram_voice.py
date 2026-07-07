@@ -158,12 +158,33 @@ async def prepare_telegram_voice(file_id: str, creator_id: int, db: Session) -> 
 
     if not title:
         return {"ok": False, "error": "Vazifa nomi topilmadi", "transcript": transcript}
-    if not executor_id:
-        return {"ok": False, "error": "Ijrochi aniqlanmadi", "transcript": transcript, "title": title}
 
-    executor = db.query(User).filter(User.id == executor_id, User.deleted == False).first()
+    executor = None
+    if executor_id:
+        executor = db.query(User).filter(User.id == executor_id, User.deleted == False).first()
+
     if not executor:
-        return {"ok": False, "error": f"Ijrochi topilmadi (id={executor_id})", "transcript": transcript}
+        # Return a partial pending so the bot can ask who should do this task
+        deadline_days_raw = max(1, int(extracted.get("deadline_days") or 3))
+        category_raw = str(extracted.get("category", "admin")).lower()
+        if category_raw not in _VALID_CATEGORIES:
+            category_raw = "admin"
+        executor_list = [
+            {"id": u["id"], "name": u["name"]}
+            for u in executors
+        ]
+        return {
+            "ok": True,
+            "needs_executor": True,
+            "title": title,
+            "description": extracted.get("description") or None,
+            "creator_id": creator_id,
+            "deadline_days": deadline_days_raw,
+            "deadline_explicit": deadline_days_raw != 3,
+            "category": category_raw,
+            "transcript": transcript,
+            "executor_list": executor_list,
+        }
 
     if creator:
         err = _check_voice_assignment(creator, executor)
