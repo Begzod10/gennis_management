@@ -14,7 +14,11 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Mission, Tag, User, Job, UserSkill
+from app.models import Mission, Tag, User, Job
+try:
+    from app.models import UserSkill as _UserSkill
+except ImportError:
+    _UserSkill = None
 from app.tasks import send_telegram_notification
 from app.services.telegram import tpl_assigned
 
@@ -237,13 +241,14 @@ def _executor_dict(u: User, db: Session) -> dict:
     if u.job_id:
         job = db.query(Job).filter(Job.id == u.job_id).first()
         job_name = job.name if job else None
-    skill_rows = db.query(UserSkill).filter(UserSkill.user_id == u.id).all()
-    # Only include non-generic skills so the AI gets signal, not noise
-    specific = [
-        f"{s.skill_uz}/{s.skill_en}"
-        for s in skill_rows
-        if s.skill_en not in _GENERIC_SKILLS_EN
-    ]
+    specific = []
+    if _UserSkill is not None:
+        skill_rows = db.query(_UserSkill).filter(_UserSkill.user_id == u.id).all()
+        specific = [
+            f"{s.skill_uz}/{s.skill_en}"
+            for s in skill_rows
+            if s.skill_en not in _GENERIC_SKILLS_EN
+        ]
     entry = {
         "id": u.id,
         "name": f"{u.name} {u.surname}".strip(),
